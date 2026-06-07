@@ -604,7 +604,7 @@ export function CtaSection() {
               </div>
 
               {/* Google Form iframe — replace src with your embed URL */}
-              <iframe
+              {/* <iframe
                 src="https://docs.google.com/forms/d/e/1FAIpQLSdtqr0LCwN4wSSv5Z-F2AIpT7frCCqXLxqRoVAFJbeU0q6uaQ/viewform?usp=header"
                 width="100%"
                 height="580"
@@ -612,7 +612,40 @@ export function CtaSection() {
                 style={{ display: "block" }}
               >
                 Loading…
-              </iframe>
+              </iframe> */}
+
+              {/* Recruitment unavailable message */}
+              <div style={{
+                padding: "60px 40px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "16px",
+                textAlign: "center",
+              }}>
+                <div style={{ width: 40, height: 1, background: "rgba(212,175,55,0.3)" }} />
+                <p style={{
+                  fontFamily: "'Cinzel', serif",
+                  color: "#d4af37",
+                  fontSize: "1rem",
+                  letterSpacing: "0.15em",
+                  textTransform: "uppercase",
+                }}>
+                  Recruitment is Currently Unavailable
+                </p>
+                <p style={{
+                  fontFamily: "'Crimson Pro', serif",
+                  color: "rgba(232,217,181,0.5)",
+                  fontSize: "0.95rem",
+                  lineHeight: 1.7,
+                  maxWidth: 360,
+                }}>
+                  The seat has not yet been opened to challengers. Return when the chronicle calls.
+                </p>
+                <div style={{ width: 40, height: 1, background: "rgba(212,175,55,0.3)" }} />
+              </div>
+              
             </motion.div>
           </motion.div>
         )}
