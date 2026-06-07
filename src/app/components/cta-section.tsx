@@ -31,12 +31,12 @@ const oaths = [
 const LORE_TITLE = "The Chronicle of Serenita";
 const LORE_SUBTITLE = "As recorded by the Scribes of the Ember Throne";
 const LORE_PARAGRAPHS = [
-  "In the age before memory, eight nations rose from the bones of a broken world. Each was born of a different wound — some of fire, some of tide, some of shadow — and each carries that wound still, hidden beneath banners and treaties and the careful smiles of diplomats.",
-  "Serenita is the name the mapmakers gave to the land between them. It is not a kingdom. It is a scar.",
-  "For three hundred years, the Accord of Embers has held the nations in an uneasy peace. Trade flows. Borders are respected. The old wars are called history. But history, in Serenita, has a way of coming back — not as memory, but as consequence.",
-  "Something has changed. The Accord strains. Old grievances surface in new courts. Scouts return from the borderlands speaking of things that should not exist, or should not exist yet. And in the capital of every nation, someone powerful has begun to make plans.",
-  "You arrive in this world not as heroes. Not yet. You arrive as people — with debts and names and reasons of your own. What you become is still unwritten.",
-  "The chronicle awaits its next chapter. Whether it is written in gold or ash depends entirely on the choices made at the table.",
+  "The world of Serenita is currently under construction.",
+  "Its nations, histories, legends, and conflicts are still being written by the scribes of the Ember Throne.",
+  "New stories, locations, characters, and adventures will be added as development continues.",
+  "For now, this chronicle remains unfinished.",
+  "Thank you for your patience while the next chapter is forged.",
+  "Work in Progress."
 ];
 
 function LoreScroll({ onClose }: { onClose: () => void }) {
