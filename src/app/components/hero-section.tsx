@@ -6,42 +6,33 @@ import { ChevronDown } from "lucide-react";
 export function HeroSection() {
   const ref = useRef<HTMLDivElement>(null);
 
-  // ── Scroll transforms (motion values, no React state) ───────────────────
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ["start start", "end start"],
-    layoutEffect: false, // avoids layout thrash on mount
-  });
+  // ── Scroll-based transforms ──────────────────────────────────────────────
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
+  const bgY      = useTransform(scrollYProgress, [0, 1], ["0%", "30%"]);
+  const opacity  = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
+  const textY    = useTransform(scrollYProgress, [0, 1], ["0%", "20%"]);
 
-  const bgY     = useTransform(scrollYProgress, [0, 1], ["0%", "25%"]);
-  const opacity = useTransform(scrollYProgress, [0, 0.6], [1, 0]);
-  const textY   = useTransform(scrollYProgress, [0, 1], ["0%", "15%"]);
-
-  // ── Mouse parallax (motion values only, zero React renders) ─────────────
+  // ── Mouse parallax via motion values (no React re-renders) ───────────────
   const rawX = useMotionValue(0);
   const rawY = useMotionValue(0);
-  const springX = useSpring(rawX, { stiffness: 50, damping: 25, restDelta: 0.001 });
-  const springY = useSpring(rawY, { stiffness: 50, damping: 25, restDelta: 0.001 });
+
+  // Spring smoothing so orbs glide rather than snap
+  const springX = useSpring(rawX, { stiffness: 60, damping: 20 });
+  const springY = useSpring(rawY, { stiffness: 60, damping: 20 });
+
+  // Derived values for each orb (different multipliers)
   const orb1X = useTransform(springX, v => v * 1.5);
   const orb1Y = useTransform(springY, v => v * 1.5);
   const orb2X = useTransform(springX, v => v * -1);
   const orb2Y = useTransform(springY, v => v * -1);
 
   useEffect(() => {
-    let rafId: number;
     const onMouseMove = (e: MouseEvent) => {
-      // Throttle to rAF so we never queue more work than the browser can paint
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        rawX.set((e.clientX / window.innerWidth  - 0.5) * 20);
-        rawY.set((e.clientY / window.innerHeight - 0.5) * 10);
-      });
+      rawX.set((e.clientX / window.innerWidth  - 0.5) * 20);
+      rawY.set((e.clientY / window.innerHeight - 0.5) * 10);
     };
-    window.addEventListener("mousemove", onMouseMove, { passive: true });
-    return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      cancelAnimationFrame(rafId);
-    };
+    window.addEventListener("mousemove", onMouseMove);
+    return () => window.removeEventListener("mousemove", onMouseMove);
   }, [rawX, rawY]);
 
   return (
@@ -50,7 +41,7 @@ export function HeroSection() {
       id="world"
       className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden"
     >
-      {/* Background — GPU-composited layer */}
+      {/* Background layers */}
       <motion.div
         className="absolute inset-0"
         style={{ y: bgY, willChange: "transform" }}
@@ -62,7 +53,6 @@ export function HeroSection() {
             backgroundSize: "cover",
             backgroundPosition: "center",
             filter: "brightness(0.35) saturate(0.7)",
-            willChange: "transform",
           }}
         />
         <div
@@ -76,32 +66,40 @@ export function HeroSection() {
         />
       </motion.div>
 
-      {/* Orb 1 */}
+      {/* Floating orb 1 */}
       <motion.div
         className="absolute pointer-events-none"
         style={{ x: orb1X, y: orb1Y, top: "15%", right: "15%", willChange: "transform" }}
         animate={{ opacity: [0.4, 0.7, 0.4], scale: [1, 1.05, 1] }}
         transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
       >
-        <div style={{
-          width: 200, height: 200, borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(212,175,55,0.25) 0%, rgba(147,100,255,0.1) 50%, transparent 70%)",
-          filter: "blur(30px)",
-        }} />
+        <div
+          style={{
+            width: 200,
+            height: 200,
+            borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(212,175,55,0.25) 0%, rgba(147,100,255,0.1) 50%, transparent 70%)",
+            filter: "blur(30px)",
+          }}
+        />
       </motion.div>
 
-      {/* Orb 2 */}
+      {/* Floating orb 2 */}
       <motion.div
         className="absolute pointer-events-none"
         style={{ x: orb2X, y: orb2Y, bottom: "25%", left: "10%", willChange: "transform" }}
         animate={{ opacity: [0.3, 0.6, 0.3] }}
         transition={{ duration: 8, repeat: Infinity, ease: "easeInOut", delay: 2 }}
       >
-        <div style={{
-          width: 150, height: 150, borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(100,180,255,0.2) 0%, rgba(212,175,55,0.1) 50%, transparent 70%)",
-          filter: "blur(25px)",
-        }} />
+        <div
+          style={{
+            width: 150,
+            height: 150,
+            borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(100,180,255,0.2) 0%, rgba(212,175,55,0.1) 50%, transparent 70%)",
+            filter: "blur(25px)",
+          }}
+        />
       </motion.div>
 
       {/* Main content */}
@@ -109,6 +107,7 @@ export function HeroSection() {
         className="relative z-10 flex flex-col items-center text-center px-6 max-w-5xl"
         style={{ y: textY, opacity, willChange: "transform, opacity" }}
       >
+        {/* Subtitle badge */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
@@ -116,12 +115,16 @@ export function HeroSection() {
           className="mb-6 flex items-center gap-3"
         >
           <div className="h-px w-12" style={{ background: "linear-gradient(to right, transparent, #d4af37)" }} />
-          <span className="text-xs tracking-widest uppercase" style={{ fontFamily: "'Cinzel', serif", color: "#d4af37", letterSpacing: "0.25em" }}>
+          <span
+            className="text-xs tracking-widest uppercase"
+            style={{ fontFamily: "'Cinzel', serif", color: "#d4af37", letterSpacing: "0.25em" }}
+          >
             SEE THE WONDERS
           </span>
           <div className="h-px w-12" style={{ background: "linear-gradient(to left, transparent, #d4af37)" }} />
         </motion.div>
 
+        {/* Main title */}
         <motion.h1
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
@@ -226,7 +229,11 @@ export function HeroSection() {
               letterSpacing: "0.15em",
               textTransform: "uppercase",
             }}
-            whileHover={{ borderColor: "rgba(212,175,55,0.9)", background: "rgba(212,175,55,0.08)", scale: 1.02 }}
+            whileHover={{
+              borderColor: "rgba(212,175,55,0.9)",
+              background: "rgba(212,175,55,0.08)",
+              scale: 1.02,
+            }}
             whileTap={{ scale: 0.97 }}
           >
             Discover Elements
@@ -245,12 +252,15 @@ export function HeroSection() {
         <span className="text-xs tracking-widest uppercase" style={{ color: "rgba(212,175,55,0.5)", fontFamily: "'Cinzel', serif" }}>
           Scroll
         </span>
-        <motion.div animate={{ y: [0, 6, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}>
+        <motion.div
+          animate={{ y: [0, 6, 0] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+        >
           <ChevronDown size={18} style={{ color: "rgba(212,175,55,0.6)" }} />
         </motion.div>
       </motion.div>
 
-      {/* Bottom fade */}
+      {/* Bottom gradient fade */}
       <div
         className="absolute bottom-0 inset-x-0 h-48 pointer-events-none"
         style={{ background: "linear-gradient(to bottom, transparent, #06080f)" }}
