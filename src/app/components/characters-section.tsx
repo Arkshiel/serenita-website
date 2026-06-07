@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { OrnateDivider, GenshinBorder } from "./ornate-divider";
 
@@ -187,8 +187,22 @@ const LockIcon = () => (
 );
 
 // ── Full Profile Modal ──────────────────────────────────────────────────────
+function useWindowWidth() {
+  const [width, setWidth] = useState(window.innerWidth);
+  useEffect(() => {
+    const handler = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return width;
+}
+
 function ProfileModal({ char, onClose }: { char: typeof characters[0]; onClose: () => void }) {
   const isLocked = char.locked;
+  const width = useWindowWidth();
+  const isMobile = width < 640;
+  const isTablet = width >= 640 && width < 900;
+  const isDesktop = width >= 900;
 
   return (
     <AnimatePresence>
@@ -205,7 +219,7 @@ function ProfileModal({ char, onClose }: { char: typeof characters[0]; onClose: 
           backdropFilter: "blur(8px)",
           zIndex: 50,
           display: "flex", alignItems: "center", justifyContent: "center",
-          padding: "24px",
+          padding: isMobile ? "12px" : "24px",
         }}
       >
         <motion.div
@@ -218,13 +232,16 @@ function ProfileModal({ char, onClose }: { char: typeof characters[0]; onClose: 
           style={{
             position: "relative",
             display: "grid",
-            gridTemplateColumns: "minmax(0, 2fr) minmax(0, 3fr)",
+            gridTemplateColumns: isDesktop ? "minmax(0, 2fr) minmax(0, 3fr)" : "1fr",
             gap: 0,
-            maxWidth: 900, width: "100%", maxHeight: "90vh",
+            maxWidth: isDesktop ? 900 : isTablet ? 600 : "100%",
+            width: "100%",
+            maxHeight: "90vh",
             background: "linear-gradient(135deg, #09101f, #0d1526)",
             border: `1px solid ${char.elementColor}44`,
             boxShadow: `0 0 60px ${char.elementColor}22, 0 0 120px rgba(0,0,0,0.6)`,
             overflow: "hidden",
+            overflowY: "auto",
           }}
         >
           {/* Corner accents */}
@@ -238,7 +255,10 @@ function ProfileModal({ char, onClose }: { char: typeof characters[0]; onClose: 
           ))}
 
           {/* Left — image */}
-          <div style={{ position: "relative", overflow: "hidden", minHeight: 480 }}>
+          <div style={{
+            position: "relative", overflow: "hidden",
+            minHeight: isMobile ? 240 : isTablet ? 340 : 480,
+          }}>
             <motion.img
               src={char.image}
               alt={char.name}
@@ -254,10 +274,12 @@ function ProfileModal({ char, onClose }: { char: typeof characters[0]; onClose: 
               position: "absolute", inset: 0,
               background: isLocked
                 ? "linear-gradient(to right, rgba(0,0,0,0.4) 60%, #09101f 100%)"
-                : `linear-gradient(to right, transparent 60%, #09101f 100%), linear-gradient(to top, rgba(6,8,15,0.85) 0%, transparent 50%), linear-gradient(135deg, ${char.elementColor}22 0%, transparent 60%)`,
+                : isDesktop
+                  ? `linear-gradient(to right, transparent 60%, #09101f 100%), linear-gradient(to top, rgba(6,8,15,0.85) 0%, transparent 50%), linear-gradient(135deg, ${char.elementColor}22 0%, transparent 60%)`
+                  : `linear-gradient(to bottom, transparent 40%, rgba(6,8,15,0.95) 100%), linear-gradient(135deg, ${char.elementColor}22 0%, transparent 60%)`,
             }} />
 
-            {/* Lock overlay for locked chars */}
+            {/* Lock overlay */}
             {isLocked && (
               <div style={{
                 position: "absolute", inset: 0,
@@ -299,11 +321,16 @@ function ProfileModal({ char, onClose }: { char: typeof characters[0]; onClose: 
             )}
 
             {/* Name overlay */}
-            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "20px" }}>
+            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: isMobile ? "14px" : "20px" }}>
               <p style={{ fontFamily: "'Cinzel', serif", fontSize: "0.65rem", letterSpacing: "0.2em", color: "rgba(232,217,181,0.4)", textTransform: "uppercase", marginBottom: 4 }}>
                 {isLocked ? "Nation of ???" : `Nation of ${char.nation}`}
               </p>
-              <h2 style={{ fontFamily: "'Cinzel', serif", fontSize: "2rem", color: isLocked ? "rgba(107,114,128,0.6)" : "#e8d9b5", fontWeight: 700, lineHeight: 1 }}>
+              <h2 style={{
+                fontFamily: "'Cinzel', serif",
+                fontSize: isMobile ? "1.3rem" : isTablet ? "1.6rem" : "2rem",
+                color: isLocked ? "rgba(107,114,128,0.6)" : "#e8d9b5",
+                fontWeight: 700, lineHeight: 1,
+              }}>
                 {char.name}
               </h2>
               <p style={{ fontFamily: "'Crimson Pro', serif", color: isLocked ? "rgba(107,114,128,0.5)" : char.elementColor, fontSize: "1rem", marginTop: 4 }}>
@@ -317,7 +344,8 @@ function ProfileModal({ char, onClose }: { char: typeof characters[0]; onClose: 
 
           {/* Right — profile info */}
           <div style={{
-            overflowY: "auto", padding: "32px 28px",
+            overflowY: "auto",
+            padding: isMobile ? "20px 16px" : isTablet ? "28px 24px" : "32px 28px",
             display: "flex", flexDirection: "column", gap: 20,
             scrollbarWidth: "thin",
             scrollbarColor: `${char.elementColor}44 transparent`,
