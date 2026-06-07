@@ -1,4 +1,4 @@
-import { motion } from "motion/react";
+import { motion } from "framer-motion";
 import { useRef, useState, useEffect, useCallback } from "react";
 import { OrnateDivider } from "./ornate-divider";
 

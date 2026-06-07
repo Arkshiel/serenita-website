@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { motion, useScroll, useTransform, useMotionValue, useSpring } from "motion/react";
+import { motion, useScroll, useTransform, useMotionValue, useSpring } from "framer-motion";
 import { OrnateDivider } from "./ornate-divider";
 import { ChevronDown } from "lucide-react";
 

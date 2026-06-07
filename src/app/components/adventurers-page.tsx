@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Sword, Shield, Star, ChevronDown, ChevronUp } from "lucide-react";
 
 // ─── Data ─────────────────────────────────────────────────────────────────────

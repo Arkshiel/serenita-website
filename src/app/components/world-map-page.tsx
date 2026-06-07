@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence } from "framer-motion";
 import { X, MapPin } from "lucide-react";
 
 // ─── Nation Data ──────────────────────────────────────────────────────────────
