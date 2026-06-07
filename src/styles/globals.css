@@ -1,0 +1,16 @@
+/* ── Mobile: under 640px ── */
+@media (max-width: 640px) {
+  .grid { grid-template-columns: 1fr !important; }
+  .md\:grid-cols-2 { grid-template-columns: 1fr !important; }
+  .md\:grid-cols-3 { grid-template-columns: 1fr !important; }
+  .md\:grid-cols-4 { grid-template-columns: 1fr 1fr !important; }
+  .lg\:grid-cols-2 { grid-template-columns: 1fr !important; }
+  .lg\:grid-cols-3 { grid-template-columns: 1fr !important; }
+  .lg\:grid-cols-4 { grid-template-columns: 1fr 1fr !important; }
+}
+
+/* ── Tablet: 640px–1024px ── */
+@media (max-width: 1024px) {
+  .lg\:grid-cols-3 { grid-template-columns: 1fr 1fr !important; }
+  .lg\:grid-cols-4 { grid-template-columns: 1fr 1fr !important; }
+}
