@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "./components/auth-provider";
 import { DiceRoller } from "./components/dice-roller";
+import { CharacterProfile } from "./components/character-profile";
 
 type Tab = "dice" | "profile" | "team" | "inventory" | "monsters" | "initiative" | "players";
 
@@ -120,8 +121,9 @@ export function PlayPage() {
         </div>
 
         {activeTab === "dice" && <DiceRoller />}
+        {activeTab === "profile" && <CharacterProfile />}
 
-        {activeTab !== "dice" && (
+        {activeTab !== "dice" && activeTab !== "profile" && (
           <div style={{ textAlign: "center", padding: "60px 0" }}>
             <p style={{ fontFamily: "'Crimson Pro', serif", fontSize: "1.1rem", color: "rgba(232,217,181,0.3)", fontStyle: "italic" }}>
               Coming soon...

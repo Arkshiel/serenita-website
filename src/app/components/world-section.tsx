@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { supabase } from "../../lib/supabase";
 import { useRef, useState, useEffect, useCallback } from "react";
 import { OrnateDivider } from "./ornate-divider";
 
@@ -719,6 +720,23 @@ const GAP = 20;
 export function WorldSection() {
   const ref = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
+  const [playerCount, setPlayerCount] = useState(0);
+
+  useEffect(() => {
+    async function fetchCount() {
+      const { count } = await supabase
+        .from("characters")
+        .select("*", { count: "exact", head: true })
+        .not("character_name", "is", null);
+      setPlayerCount(count ?? 0);
+    }
+    fetchCount();
+    const channel = supabase
+      .channel("player-count")
+      .on("postgres_changes", { event: "*", schema: "public", table: "characters" }, fetchCount)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   const canPrev = index > 0;
   const canNext = index + VISIBLE < nations.length;
@@ -807,7 +825,7 @@ export function WorldSection() {
         <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.8, delay: 0.3 }}
           className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-px"
           style={{ border: "1px solid rgba(212,175,55,0.15)", background: "rgba(212,175,55,0.05)" }}>
-          {[{ value: "8", label: "Nations" }, { value: "0", label: "Players" }, { value: "∞", label: "Sessions" }, { value: "1", label: "True World" }].map((stat) => (
+          {[{ value: "8", label: "Nations" }, { value: playerCount, label: "Players" }, { value: "∞", label: "Sessions" }, { value: "1", label: "True World" }].map((stat) => (
             <div key={stat.label} className="flex flex-col items-center justify-center py-8 px-4" style={{ background: "rgba(6,8,15,0.9)" }}>
               <span style={{ fontFamily: "'Cinzel', serif", fontSize: "2.5rem", fontWeight: 700, background: "linear-gradient(180deg, #e8d9b5 0%, #c8a96e 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
                 {stat.value}
