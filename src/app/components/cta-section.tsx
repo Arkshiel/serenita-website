@@ -31,12 +31,12 @@ const oaths = [
 const LORE_TITLE = "The Chronicle of Serenita";
 const LORE_SUBTITLE = "As recorded by the Scribes of the Ember Throne";
 const LORE_PARAGRAPHS = [
-  "The world of Serenita is currently under construction.",
-  "Its nations, histories, legends, and conflicts are still being written by the scribes of the Ember Throne.",
-  "New stories, locations, characters, and adventures will be added as development continues.",
-  "For now, this chronicle remains unfinished.",
-  "Thank you for your patience while the next chapter is forged.",
-  "Work in Progress."
+  "As recorded by the Scribes of the Ember Throne, this is the Chronicle of Serenita.",
+  "A world divided among eight nations and bound by eight elemental forces that shape all life and destiny.",
+  "From the volcanic forges of Ignareth to the ancient canopies of Selvaran, each realm bears the mark of its sovereign element.",
+  "Great champions rise, forgotten legends awaken, and countless adventurers carve their names into history.",
+  "Though many truths have been lost to time, the story of Serenita continues to unfold with every passing age.",
+  "Turn the page, and step into a world where your own legend awaits."
 ];
 
 function LoreScroll({ onClose }: { onClose: () => void }) {
