@@ -19,6 +19,7 @@ const elementColors: Record<string, string> = {
 interface Adventurer {
   id: string;
   character_name: string;
+  portrait_url: string;
   class: string;
   subclass: string;
   race: string;
@@ -79,7 +80,7 @@ function AdventurerCard({ adventurer, index }: { adventurer: Adventurer; index: 
           position: "relative", overflow: "hidden",
         }}>
           <img
-            src="/images/maleunlock.png"
+            src={adventurer.portrait_url || "/images/maleunlock.png"}
             alt="Adventurer"
             style={{
               width: "100%", height: "100%",
