@@ -39,6 +39,11 @@ interface Character {
   death_saves_failure: number;
   notes: string;
   portrait_url: string;
+  gold: number;
+  silver: number;
+  copper: number;
+  attacks_json: string;
+  spell_slots_used: Record<string, number>;
   profiles: { username: string };
 }
 

@@ -1,0 +1,438 @@
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { supabase } from "../../lib/supabase";
+import { useAuth } from "./auth-provider";
+import { Swords, Plus, ChevronRight, SkipForward, Shield, Heart, Skull, Sparkles, X } from "lucide-react";
+
+interface Character {
+  id: string;
+  character_name: string;
+  class: string;
+  race: string;
+  level: number;
+  hp: number;
+  max_hp: number;
+  temp_hp: number;
+  mana: number;
+  max_mana: number;
+  ac: number;
+  dexterity: number;
+  initiative_bonus: number;
+  conditions: string[];
+  portrait_url: string;
+}
+
+interface InitiativeEntry {
+  id: string;
+  character_id: string | null;
+  is_monster: boolean;
+  monster_name: string | null;
+  monster_hp: number;
+  monster_max_hp: number;
+  monster_ac: number;
+  initiative: number;
+  conditions: string[];
+  // joined
+  character?: Character;
+}
+
+interface BattleSession {
+  id: string;
+  active: boolean;
+  round: number;
+  current_turn_index: number;
+}
+
+export function TeamStatus() {
+  const { user } = useAuth();
+  const [isDM, setIsDM] = useState(false);
+  const [characters, setCharacters] = useState<Character[]>([]);
+  const [session, setSession] = useState<BattleSession | null>(null);
+  const [entries, setEntries] = useState<InitiativeEntry[]>([]);
+  const [myCharacter, setMyCharacter] = useState<Character | null>(null);
+  const [hasRolled, setHasRolled] = useState(false);
+  const [showMonsterForm, setShowMonsterForm] = useState(false);
+  const [monsterDraft, setMonsterDraft] = useState({ name: "", hp: "", ac: "", initiative: "" });
+  const [loading, setLoading] = useState(true);
+
+  // Check if DM
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("profiles").select("role").eq("id", user.id).single()
+      .then(({ data }) => {
+        if (data?.role === "dungeon_master") setIsDM(true);
+      });
+  }, [user]);
+
+  // Load my character
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("characters").select("*").eq("player_id", user.id).single()
+      .then(({ data }) => { if (data) setMyCharacter(data); });
+  }, [user]);
+
+  // Load all characters
+    useEffect(() => {
+    supabase.from("characters").select("*").then(({ data }) => {
+        if (data) setCharacters(data);
+    });
+    }, []);
+
+  // Load or create session + entries
+  useEffect(() => {
+    const load = async () => {
+    const { data: sessionData } = await supabase
+        .from("battle_sessions")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (sessionData) {
+        setSession(sessionData);
+        await loadEntries(sessionData.id);
+    } else {
+        // Auto-create a session if none exists
+        const { data: newSession } = await supabase
+        .from("battle_sessions")
+        .insert({ active: false, round: 1, current_turn_index: 0 })
+        .select()
+        .single();
+        if (newSession) setSession(newSession);
+    }
+    setLoading(false);
+    };
+    load();
+  }, []);
+
+  const loadEntries = async (sessionId: string) => {
+    const { data } = await supabase
+      .from("initiative_rolls")
+      .select("*, character:characters(*)")
+      .eq("session_id", sessionId)
+      .order("initiative", { ascending: false });
+    if (data) {
+      setEntries(data);
+      if (user && myCharacter) {
+        const mine = data.find(e => e.character_id === myCharacter.id);
+        if (mine) setHasRolled(true);
+      }
+    }
+  };
+
+  // Realtime
+  useEffect(() => {
+    if (!session) return;
+    const channel = supabase.channel("team-battle")
+      .on("postgres_changes", { event: "*", schema: "public", table: "initiative_rolls" }, () => {
+        loadEntries(session.id);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "battle_sessions" }, (payload) => {
+        if (payload.new) setSession(payload.new as BattleSession);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [session?.id]);
+
+  const rollInitiative = async () => {
+    if (!myCharacter || !session || hasRolled) return;
+    const d20 = Math.floor(Math.random() * 20) + 1;
+    const total = d20 + (myCharacter.initiative_bonus ?? 0);
+    await supabase.from("initiative_rolls").insert({
+      session_id: session.id,
+      character_id: myCharacter.id,
+      is_monster: false,
+      initiative: total,
+      conditions: [],
+    });
+    setHasRolled(true);
+  };
+
+    const startBattle = async () => {
+    if (!session) return;
+    const { error } = await supabase
+        .from("battle_sessions")
+        .update({ active: true, round: 1, current_turn_index: 0 })
+        .eq("id", session.id);
+    if (error) console.error("startBattle error:", error);
+    else setSession({ ...session, active: true, round: 1, current_turn_index: 0 }); // optimistic update
+    };
+
+  const newSession = async () => {
+    await supabase.from("battle_sessions").insert({ active: false, round: 1, current_turn_index: 0 });
+    // reload
+    const { data } = await supabase.from("battle_sessions").select("*").order("created_at", { ascending: false }).limit(1).single();
+    if (data) { setSession(data); setEntries([]); setHasRolled(false); }
+  };
+
+  const advanceTurn = async () => {
+    if (!session) return;
+    const next = (session.current_turn_index + 1) % entries.length;
+    const newRound = next === 0 ? session.round + 1 : session.round;
+    await supabase.from("battle_sessions").update({ current_turn_index: next, round: newRound }).eq("id", session.id);
+  };
+
+    const addMonster = async () => {
+    if (!session || !monsterDraft.name) return;
+    const hp = parseInt(monsterDraft.hp) || 10;
+    const ac = parseInt(monsterDraft.ac) || 10;
+    const init = monsterDraft.initiative !== ""
+        ? parseInt(monsterDraft.initiative)
+        : Math.floor(Math.random() * 20) + 1;
+    await supabase.from("initiative_rolls").insert({
+        session_id: session.id,
+        is_monster: true,
+        monster_name: monsterDraft.name,
+        monster_hp: hp,
+        monster_max_hp: hp,
+        monster_ac: ac,
+        initiative: init,
+        conditions: [],
+    });
+    setMonsterDraft({ name: "", hp: "", ac: "", initiative: "" });
+    setShowMonsterForm(false);
+    await loadEntries(session.id); // force reload
+    };
+
+  if (loading) return (
+    <div style={{ textAlign: "center", padding: 60, color: "#8b7355", fontFamily: "serif" }}>
+      Gathering the party…
+    </div>
+  );
+
+  return (
+    <div style={{ maxWidth: 800, margin: "0 auto", padding: "0 16px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+        <div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: "#c4a96b", fontFamily: "serif", margin: 0 }}>
+            {session?.active ? `⚔ Battle — Round ${session.round}` : "Session Hub"}
+          </h2>
+          <p style={{ fontSize: 11, color: "#6b7280", margin: "2px 0 0", fontFamily: "serif" }}>
+            {session?.active ? `${entries.length} combatants` : "Waiting for battle to begin"}
+          </p>
+        </div>
+        {isDM && (
+        <div style={{ display: "flex", gap: 8 }}>
+            {!session?.active && (
+            <button onClick={startBattle} style={dmBtnStyle("#c4a96b")}>
+                <Swords size={13} /> Start Battle
+            </button>
+            )}
+            {session?.active && (
+            <button onClick={advanceTurn} style={dmBtnStyle("#34d399")}>
+                <SkipForward size={13} /> Next Turn
+            </button>
+            )}
+            <button onClick={() => setShowMonsterForm(v => !v)} style={dmBtnStyle("#f87171")}>
+            <Plus size={13} /> Add Enemy
+            </button>
+            <button onClick={newSession} style={dmBtnStyle("#6b7280")}>
+            New Session
+            </button>
+        </div>
+        )}
+      </div>
+
+
+        {/* Party overview — always visible */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 20 }}>
+        <p style={{ fontSize: 10, color: "#6b7280", fontFamily: "serif", letterSpacing: "0.15em", textTransform: "uppercase", margin: "0 0 6px" }}>Party</p>
+        {characters.map(char => (
+            <div key={char.id} style={{
+            background: "rgba(30,24,16,0.7)", border: "1px solid rgba(255,255,255,0.06)",
+            borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 12,
+            }}>
+            <div style={{ width: 36, height: 36, borderRadius: 6, overflow: "hidden", border: "1px solid rgba(196,169,107,0.2)", background: "rgba(0,0,0,0.4)", flexShrink: 0 }}>
+                {char.portrait_url
+                ? <img src={char.portrait_url.split("?")[0]} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
+                : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#4b5563", fontSize: 14 }}>?</div>
+                }
+            </div>
+            <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#e5e0d5", fontFamily: "serif" }}>{char.character_name}</div>
+                <div style={{ fontSize: 10, color: "#6b7280" }}>{char.race} {char.class} • Lvl {char.level}</div>
+            </div>
+            <div style={{ display: "flex", gap: 16, fontSize: 11 }}>
+                <div style={{ textAlign: "center" }}>
+                <div style={{ color: "#22c55e", fontWeight: 700 }}>{char.hp}/{char.max_hp}</div>
+                <div style={{ color: "#6b7280" }}>HP</div>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                <div style={{ color: "#60a5fa", fontWeight: 700 }}>{char.ac}</div>
+                <div style={{ color: "#6b7280" }}>AC</div>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                <div style={{ color: "#a78bfa", fontWeight: 700 }}>{char.mana}/{char.max_mana}</div>
+                <div style={{ color: "#6b7280" }}>Mana</div>
+                </div>
+            </div>
+            </div>
+        ))}
+        </div>
+
+        {isDM && showMonsterForm && (
+        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+            style={{ background: "rgba(30,14,14,0.95)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: 10, padding: 16, marginBottom: 16, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
+            {[["Name", "name", "text"], ["HP", "hp", "number"], ["AC", "ac", "number"]].map(([label, field, type]) => (
+            <div key={field} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <label style={{ fontSize: 10, color: "#9ca3af", fontFamily: "serif" }}>{label}</label>
+                <input type={type} placeholder={field === "initiative" ? "auto-roll" : ""}
+                value={monsterDraft[field as keyof typeof monsterDraft]}
+                onChange={e => setMonsterDraft(d => ({ ...d, [field]: e.target.value }))}
+                style={{ width: field === "name" ? 140 : 70, padding: "6px 10px", background: "rgba(0,0,0,0.4)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: 6, color: "#f1e8d8", fontFamily: "serif", fontSize: 13 }} />
+            </div>
+            ))}
+            <button onClick={addMonster} style={{ ...dmBtnStyle("#f87171"), alignSelf: "flex-end" }}>
+            <Plus size={13} /> Add
+            </button>
+        </motion.div>
+        )}
+
+      {/* Player roll button */}
+      {!isDM && session && !session.active && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            background: "linear-gradient(135deg, rgba(30,24,16,0.95), rgba(17,14,11,0.9))",
+            border: "1px solid rgba(196,169,107,0.2)",
+            borderRadius: 12, padding: 24, textAlign: "center", marginBottom: 20,
+          }}
+        >
+          <p style={{ color: "#8b7355", fontFamily: "serif", fontSize: 13, marginBottom: 16 }}>
+            {hasRolled ? "✓ You've rolled — waiting for the DM to start battle" : "The DM is preparing battle. Roll your initiative!"}
+          </p>
+          {!hasRolled && (
+            <button onClick={rollInitiative} style={{
+              padding: "10px 28px", background: "rgba(196,169,107,0.1)",
+              border: "1px solid rgba(196,169,107,0.4)", borderRadius: 8,
+              color: "#c4a96b", fontFamily: "serif", fontSize: 14,
+              cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8,
+            }}>
+              <Swords size={15} /> Roll Initiative (d20 + {myCharacter?.initiative_bonus ?? 0})
+            </button>
+          )}
+        </motion.div>
+      )}
+
+      {/* Initiative entries */}
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    {entries.length === 0 && (
+        <div style={{ textAlign: "center", padding: 40, color: "#4b5563", fontFamily: "serif" }}>
+        <Skull size={28} style={{ margin: "0 auto 10px", opacity: 0.3 }} />
+        <p>No one has rolled yet.</p>
+        </div>
+    )}
+    {entries.map((entry, index) => {
+        const isCurrentTurn = session?.active && session.current_turn_index === index;
+        const char = entry.character;
+        const hp = char?.hp ?? entry.monster_hp;
+        const maxHp = char?.max_hp ?? entry.monster_max_hp;
+        const hpPct = maxHp > 0 ? Math.min(100, (hp / maxHp) * 100) : 0;
+        const hpColor = hpPct > 60 ? "#22c55e" : hpPct > 30 ? "#f59e0b" : "#ef4444";
+        const isDowned = hp <= 0;
+
+        return (
+        <motion.div
+            key={entry.id}
+            layout
+            animate={isCurrentTurn ? { borderColor: "rgba(196,169,107,0.6)" } : { borderColor: "rgba(255,255,255,0.06)" }}
+            style={{
+            background: isCurrentTurn
+                ? "linear-gradient(135deg, rgba(196,169,107,0.08), rgba(17,14,11,0.95))"
+                : isDowned
+                ? "linear-gradient(135deg, rgba(127,29,29,0.12), rgba(17,14,11,0.9))"
+                : "linear-gradient(135deg, rgba(30,24,16,0.95), rgba(17,14,11,0.9))",
+            border: "1px solid",
+            borderRadius: 10, padding: "12px 16px",
+            display: "flex", alignItems: "center", gap: 14,
+            }}
+        >
+            {/* Turn indicator */}
+            <div style={{ width: 28, textAlign: "center", flexShrink: 0 }}>
+            {isCurrentTurn
+                ? <ChevronRight size={18} color="#c4a96b" />
+                : <span style={{ fontSize: 12, color: "#4b5563", fontFamily: "serif" }}>{index + 1}</span>
+            }
+            </div>
+
+            {/* Portrait or monster icon */}
+            <div style={{
+            width: 40, height: 40, borderRadius: 8, overflow: "hidden", flexShrink: 0,
+            border: "1px solid rgba(196,169,107,0.2)",
+            background: "rgba(0,0,0,0.4)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+            {char?.portrait_url
+                ? <img src={char.portrait_url.split("?")[0]} alt={char.character_name} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
+                : <Skull size={16} color={entry.is_monster ? "#ef4444" : "#6b7280"} />
+            }
+            </div>
+
+            {/* Name + HP */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: entry.is_monster ? "#fca5a5" : "#e5e0d5", fontFamily: "serif" }}>
+                {entry.is_monster ? entry.monster_name : char?.character_name}
+                </span>
+                {!entry.is_monster && char && (
+                <span style={{ fontSize: 10, color: "#6b7280" }}>{char.race} {char.class} • Lvl {char.level}</span>
+                )}
+            </div>
+            {/* HP bar */}
+            <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden", marginBottom: 4 }}>
+                <div style={{ height: "100%", width: `${hpPct}%`, background: hpColor, borderRadius: 2, transition: "width 0.3s" }} />
+            </div>
+            <span style={{ fontSize: 10, color: "#6b7280" }}>{hp}/{maxHp} HP</span>
+            {/* Conditions */}
+            {entry.conditions?.length > 0 && (
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                {entry.conditions.map(c => (
+                    <span key={c} style={{ fontSize: 9, padding: "1px 6px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#9ca3af" }}>{c}</span>
+                ))}
+                </div>
+            )}
+            </div>
+
+            {/* Initiative badge */}
+            <div style={{ textAlign: "center", flexShrink: 0 }}>
+            <div style={{ fontSize: 20, fontWeight: 700, color: "#c4a96b", fontFamily: "serif" }}>{entry.initiative}</div>
+            <div style={{ fontSize: 9, color: "#6b7280" }}>INIT</div>
+            </div>
+
+            {/* AC */}
+            {(char?.ac || entry.monster_ac) ? (
+            <div style={{ textAlign: "center", flexShrink: 0 }}>
+                <Shield size={12} color="#60a5fa" style={{ margin: "0 auto 2px" }} />
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#60a5fa", fontFamily: "serif" }}>{char?.ac ?? entry.monster_ac}</div>
+                <div style={{ fontSize: 9, color: "#6b7280" }}>AC</div>
+            </div>
+            ) : null}
+
+            {/* DM remove button for monsters */}
+            {isDM && entry.is_monster && (
+                <button
+                    onClick={async () => {
+                    await supabase.from("initiative_rolls").delete().eq("id", entry.id);
+                    await loadEntries(session!.id); // add this line
+                    }}
+                    style={{ background: "none", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 6, padding: "4px 8px", color: "#ef4444", cursor: "pointer" }}
+                >
+                    <X size={12} />
+                </button>
+                )}
+        </motion.div>
+        );
+    })}
+    </div>
+    </div>
+  );
+}
+
+const dmBtnStyle = (color: string): React.CSSProperties => ({
+  display: "flex", alignItems: "center", gap: 6,
+  padding: "7px 14px", background: "transparent",
+  border: `1px solid ${color}55`, borderRadius: 8,
+  color, fontFamily: "serif", fontSize: 12, cursor: "pointer",
+});

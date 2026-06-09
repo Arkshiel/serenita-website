@@ -3,6 +3,7 @@ import { useAuth } from "./components/auth-provider";
 import { DiceRoller } from "./components/dice-roller";
 import { CharacterProfile } from "./components/character-profile";
 import { DMPlayersPanel } from "./components/dm-players-panel";
+import { TeamStatus } from "./components/team-status";
 
 type Tab = "dice" | "profile" | "team" | "inventory" | "monsters" | "initiative" | "players";
 
@@ -15,19 +16,6 @@ export function PlayPage() {
       window.location.href = "/";
     }
   }, [role, loading, profile]);
-
-  if (loading) {
-    return (
-      <div style={{
-        minHeight: "100vh", background: "#06080f",
-        display: "flex", alignItems: "center", justifyContent: "center",
-      }}>
-        <p style={{ fontFamily: "'Cinzel', serif", color: "rgba(212,175,55,0.5)", letterSpacing: "0.2em", fontSize: "0.7rem", textTransform: "uppercase" }}>
-          Entering the realm...
-        </p>
-      </div>
-    );
-  }
 
   const tabs = [
     { label: "🎲 Dice Roll", id: "dice" as Tab },
@@ -44,7 +32,15 @@ export function PlayPage() {
   const isDmTab = (id: Tab) => ["monsters", "initiative", "players"].includes(id);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#06080f", color: "#e8d9b5" }}>
+  <div style={{ minHeight: "100vh", background: "#06080f", color: "#e8d9b5" }}>
+    {loading ? (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <p style={{ fontFamily: "'Cinzel', serif", color: "rgba(212,175,55,0.5)", letterSpacing: "0.2em", fontSize: "0.7rem", textTransform: "uppercase" }}>
+          Entering the realm...
+        </p>
+      </div>
+    ) : (
+      <>
       {/* Play Hub Nav */}
       <nav style={{
         position: "fixed", top: 0, left: 0, right: 0, zIndex: 50,
@@ -120,13 +116,18 @@ export function PlayPage() {
             {activeTab === "players" && "Player Panel"}
           </h1>
         </div>
+        
 
         {activeTab === "dice" && <DiceRoller />}
-        {activeTab === "profile" && <CharacterProfile />}
+        <div style={{ display: activeTab === "profile" ? "block" : "none" }}>
+          <CharacterProfile />
+        </div>
 
         {activeTab === "players" && <DMPlayersPanel />}
 
-        {activeTab !== "dice" && activeTab !== "profile" && activeTab !== "players" && (
+        {activeTab === "team" && <TeamStatus />}
+
+        {activeTab !== "dice" && activeTab !== "profile" && activeTab !== "players" && activeTab !== "team" && (
           <div style={{ textAlign: "center", padding: "60px 0" }}>
             <p style={{ fontFamily: "'Crimson Pro', serif", fontSize: "1.1rem", color: "rgba(232,217,181,0.3)", fontStyle: "italic" }}>
               Coming soon...
@@ -134,6 +135,8 @@ export function PlayPage() {
           </div>
         )}
       </div>
+      </> 
+      )}
     </div>
   );
 }
