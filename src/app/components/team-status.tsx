@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "./auth-provider";
 import { Swords, Plus, ChevronRight, SkipForward, Shield, Heart, Skull, Sparkles, X } from "lucide-react";
+import { SwordClash } from "./sword-clash";
 
 interface Character {
   id: string;
@@ -41,6 +42,7 @@ interface BattleSession {
   active: boolean;
   round: number;
   current_turn_index: number;
+  clash_triggered_at?: string;
 }
 
 export function TeamStatus() {
@@ -54,6 +56,8 @@ export function TeamStatus() {
   const [showMonsterForm, setShowMonsterForm] = useState(false);
   const [monsterDraft, setMonsterDraft] = useState({ name: "", hp: "", ac: "", initiative: "" });
   const [loading, setLoading] = useState(true);
+  const sessionRef = useRef<BattleSession | null>(null);
+  const [showClash, setShowClash] = useState(false);
 
   // Check if DM
   useEffect(() => {
@@ -73,8 +77,8 @@ export function TeamStatus() {
 
   // Load all characters
     useEffect(() => {
-    supabase.from("characters").select("*").then(({ data }) => {
-        if (data) setCharacters(data);
+    supabase.from("characters").select("*").order("created_at", { ascending: true }).then(({ data }) => {
+        if (data) setCharacters([...data]);
     });
     }, []);
 
@@ -91,6 +95,7 @@ export function TeamStatus() {
     if (sessionData) {
         setSession(sessionData);
         await loadEntries(sessionData.id);
+        sessionRef.current = sessionData;
     } else {
         // Auto-create a session if none exists
         const { data: newSession } = await supabase
@@ -105,64 +110,108 @@ export function TeamStatus() {
     load();
   }, []);
 
-  const loadEntries = async (sessionId: string) => {
+    const loadEntries = async (sessionId: string) => {
     const { data } = await supabase
-      .from("initiative_rolls")
-      .select("*, character:characters(*)")
-      .eq("session_id", sessionId)
-      .order("initiative", { ascending: false });
+        .from("initiative_rolls")
+        .select("*, character:characters(*)")
+        .eq("session_id", sessionId)
+        .order("initiative", { ascending: false });
     if (data) {
-      setEntries(data);
-      if (user && myCharacter) {
-        const mine = data.find(e => e.character_id === myCharacter.id);
-        if (mine) setHasRolled(true);
-      }
+        setEntries(data);
+        setMyCharacter(prev => {
+        if (prev) {
+            const mine = data.find(e => e.character_id === prev.id);
+            if (mine) setHasRolled(true);
+        }
+        return prev;
+        });
     }
-  };
+    };
 
-  // Realtime
-  useEffect(() => {
-    if (!session) return;
-    const channel = supabase.channel("team-battle")
-      .on("postgres_changes", { event: "*", schema: "public", table: "initiative_rolls" }, () => {
-        loadEntries(session.id);
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "battle_sessions" }, (payload) => {
-        if (payload.new) setSession(payload.new as BattleSession);
-      })
-      .subscribe();
+
+    // Realtime
+    useEffect(() => {
+    const channel = supabase.channel(`team-battle-${Math.random()}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "characters" }, () => {
+    supabase.from("characters").select("*").order("created_at", { ascending: true }).then(({ data }) => {
+        if (data) setCharacters([...data]);
+    });
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "battle_sessions" }, (payload) => {
+    if (payload.eventType === "DELETE") return;
+    if (payload.new) {
+        const incoming = payload.new as BattleSession;
+        const isNewSession = incoming.id !== sessionRef.current?.id;
+
+        // Show clash animation for ALL players when DM starts battle
+        if (
+        (payload.old as any)?.clash_triggered_at !== (payload.new as any)?.clash_triggered_at &&
+        (payload.new as any)?.clash_triggered_at
+        ) {
+        setShowClash(true);
+        }
+
+        setSession(incoming);
+        sessionRef.current = incoming;
+
+        if (isNewSession) {
+        setEntries([]);
+        setHasRolled(false);
+        }
+    }
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "initiative_rolls" }, async () => {
+    const sid = sessionRef.current?.id;
+    if (sid) {
+        loadEntries(sid);
+    } else {
+        // sessionRef not ready yet, re-fetch session then load entries
+        const { data } = await supabase
+        .from("battle_sessions")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+        if (data) {
+        sessionRef.current = data;
+        setSession(data);
+        loadEntries(data.id);
+        }
+    }
+    })
+        .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [session?.id]);
+    }, []); // empty deps — subscribes once, uses ref for session id
 
-  const rollInitiative = async () => {
+    const rollInitiative = async () => {
     if (!myCharacter || !session || hasRolled) return;
     const d20 = Math.floor(Math.random() * 20) + 1;
     const total = d20 + (myCharacter.initiative_bonus ?? 0);
     await supabase.from("initiative_rolls").insert({
-      session_id: session.id,
-      character_id: myCharacter.id,
-      is_monster: false,
-      initiative: total,
-      conditions: [],
+        session_id: session.id,
+        character_id: myCharacter.id,
+        is_monster: false,
+        initiative: total,
+        conditions: [],
     });
     setHasRolled(true);
-  };
+    await loadEntries(session.id);
+    };
 
     const startBattle = async () => {
-    if (!session) return;
-    const { error } = await supabase
-        .from("battle_sessions")
-        .update({ active: true, round: 1, current_turn_index: 0 })
-        .eq("id", session.id);
-    if (error) console.error("startBattle error:", error);
-    else setSession({ ...session, active: true, round: 1, current_turn_index: 0 }); // optimistic update
-    };
+  if (!session) return;
+  setShowClash(true);
+  await supabase.from("battle_sessions")
+    .update({ active: true, round: 1, current_turn_index: 0, clash_triggered_at: new Date().toISOString() })
+    .eq("id", session.id);
+  sessionRef.current = { ...session, active: true, round: 1, current_turn_index: 0 };
+  };
 
   const newSession = async () => {
     await supabase.from("battle_sessions").insert({ active: false, round: 1, current_turn_index: 0 });
     // reload
     const { data } = await supabase.from("battle_sessions").select("*").order("created_at", { ascending: false }).limit(1).single();
-    if (data) { setSession(data); setEntries([]); setHasRolled(false); }
+    if (data) { setSession(data); sessionRef.current = data; setEntries([]); setHasRolled(false); }
   };
 
   const advanceTurn = async () => {
@@ -266,6 +315,20 @@ export function TeamStatus() {
                 <div style={{ color: "#a78bfa", fontWeight: 700 }}>{char.mana}/{char.max_mana}</div>
                 <div style={{ color: "#6b7280" }}>Mana</div>
                 </div>
+                {isDM && (
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <button onClick={async () => {
+                    const newHp = Math.max(0, char.hp - 1);
+                    await supabase.from("characters").update({ hp: newHp }).eq("id", char.id);
+                    setCharacters(prev => prev.map(c => c.id === char.id ? { ...c, hp: newHp } : c));
+                    }} style={{ width: 18, height: 18, background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 4, color: "#ef4444", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
+                    <button onClick={async () => {
+                    const newHp = Math.min(char.max_hp, char.hp + 1);
+                    await supabase.from("characters").update({ hp: newHp }).eq("id", char.id);
+                    setCharacters(prev => prev.map(c => c.id === char.id ? { ...c, hp: newHp } : c));
+                    }} style={{ width: 18, height: 18, background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 4, color: "#22c55e", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+                </div>
+                )}
             </div>
             </div>
         ))}
@@ -290,7 +353,7 @@ export function TeamStatus() {
         )}
 
       {/* Player roll button */}
-      {!isDM && session && !session.active && (
+      {!isDM && session && !hasRolled && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -326,7 +389,9 @@ export function TeamStatus() {
     )}
     {entries.map((entry, index) => {
         const isCurrentTurn = session?.active && session.current_turn_index === index;
-        const char = entry.character;
+        const char = entry.is_monster
+        ? null
+        : characters.find(c => c.id === entry.character_id) ?? entry.character;
         const hp = char?.hp ?? entry.monster_hp;
         const maxHp = char?.max_hp ?? entry.monster_max_hp;
         const hpPct = maxHp > 0 ? Math.min(100, (hp / maxHp) * 100) : 0;
@@ -384,15 +449,62 @@ export function TeamStatus() {
             <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden", marginBottom: 4 }}>
                 <div style={{ height: "100%", width: `${hpPct}%`, background: hpColor, borderRadius: 2, transition: "width 0.3s" }} />
             </div>
-            <span style={{ fontSize: 10, color: "#6b7280" }}>{hp}/{maxHp} HP</span>
-            {/* Conditions */}
-            {entry.conditions?.length > 0 && (
-                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
-                {entry.conditions.map(c => (
-                    <span key={c} style={{ fontSize: 9, padding: "1px 6px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#9ca3af" }}>{c}</span>
-                ))}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 10, color: "#6b7280" }}>{hp}/{maxHp} HP</span>
+                {/* DM HP controls for monsters */}
+                {isDM && entry.is_monster && (
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <button onClick={async () => {
+                    const newHp = Math.max(0, entry.monster_hp - 1);
+                    await supabase.from("initiative_rolls").update({ monster_hp: newHp }).eq("id", entry.id);
+                    await loadEntries(session!.id);
+                    }} style={{ width: 18, height: 18, background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 4, color: "#ef4444", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
+                    <input
+                    type="number"
+                    defaultValue={1}
+                    id={`dmg-${entry.id}`}
+                    style={{ width: 36, padding: "1px 4px", background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, color: "#f1e8d8", fontFamily: "serif", fontSize: 11, textAlign: "center" }}
+                    />
+                    <button onClick={async () => {
+                    const amt = parseInt((document.getElementById(`dmg-${entry.id}`) as HTMLInputElement)?.value) || 1;
+                    const newHp = Math.max(0, entry.monster_hp - amt);
+                    await supabase.from("initiative_rolls").update({ monster_hp: newHp }).eq("id", entry.id);
+                    await loadEntries(session!.id);
+                    }} style={{ padding: "1px 6px", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 4, color: "#ef4444", cursor: "pointer", fontSize: 10, fontFamily: "serif" }}>dmg</button>
+                    <button onClick={async () => {
+                    const amt = parseInt((document.getElementById(`dmg-${entry.id}`) as HTMLInputElement)?.value) || 1;
+                    const newHp = Math.min(entry.monster_max_hp, entry.monster_hp + amt);
+                    await supabase.from("initiative_rolls").update({ monster_hp: newHp }).eq("id", entry.id);
+                    await loadEntries(session!.id);
+                    }} style={{ padding: "1px 6px", background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 4, color: "#22c55e", cursor: "pointer", fontSize: 10, fontFamily: "serif" }}>heal</button>
                 </div>
-            )}
+                )}
+            </div>
+            {/* Conditions */}
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                {entry.conditions?.map(c => (
+                <span key={c} onClick={async () => {
+                    if (!isDM) return;
+                    const updated = entry.conditions.filter(x => x !== c);
+                    await supabase.from("initiative_rolls").update({ conditions: updated }).eq("id", entry.id);
+                    await loadEntries(session!.id);
+                }} style={{ fontSize: 9, padding: "1px 6px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#9ca3af", cursor: isDM ? "pointer" : "default" }}>{c} {isDM && "×"}</span>
+                ))}
+                {isDM && entry.is_monster && (
+                <select onChange={async (e) => {
+                    if (!e.target.value) return;
+                    const updated = [...(entry.conditions || []), e.target.value];
+                    await supabase.from("initiative_rolls").update({ conditions: updated }).eq("id", entry.id);
+                    await loadEntries(session!.id);
+                    e.target.value = "";
+                }} style={{ fontSize: 9, padding: "1px 4px", background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: "#9ca3af", cursor: "pointer" }}>
+                    <option value="">+ condition</option>
+                    {["Poisoned","Stunned","Blinded","Frightened","Paralyzed","Incapacitated","Prone","Restrained","Charmed","Invisible","Concentrating","Bleeding"].map(c => (
+                    <option key={c} value={c}>{c}</option>
+                    ))}
+                </select>
+                )}
+            </div>
             </div>
 
             {/* Initiative badge */}
@@ -426,6 +538,7 @@ export function TeamStatus() {
         );
     })}
     </div>
+        {showClash && <SwordClash onComplete={() => setShowClash(false)} />}
     </div>
   );
 }
