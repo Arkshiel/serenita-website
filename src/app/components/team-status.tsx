@@ -305,7 +305,9 @@ export function TeamStatus() {
               </div>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "#e5e0d5", fontFamily: "serif" }}>{myCharacter.character_name}</div>
-                <div style={{ fontSize: 9, color: "#c4a96b", fontFamily: "serif", letterSpacing: "0.1em", textTransform: "uppercase" }}>Dungeon Master</div>
+                <div style={{ fontSize: 9, color: "#c4a96b", fontFamily: "serif", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                  {isDM ? "Dungeon Master" : myCharacter?.class}
+                </div>
               </div>
             </div>
           )}
