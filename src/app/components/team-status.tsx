@@ -58,6 +58,7 @@ export function TeamStatus() {
   const [loading, setLoading] = useState(true);
   const sessionRef = useRef<BattleSession | null>(null);
   const [showClash, setShowClash] = useState(false);
+  const lastClashRef = useRef<string | null>(null);
 
   // Check if DM
   useEffect(() => {
@@ -138,27 +139,27 @@ export function TeamStatus() {
     });
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "battle_sessions" }, (payload) => {
-    if (payload.eventType === "DELETE") return;
-    if (payload.new) {
+      if (payload.eventType === "DELETE") return;
+      if (payload.new) {
         const incoming = payload.new as BattleSession;
         const isNewSession = incoming.id !== sessionRef.current?.id;
 
-        // Show clash animation for ALL players when DM starts battle
-        if (
-        (payload.old as any)?.clash_triggered_at !== (payload.new as any)?.clash_triggered_at &&
-        (payload.new as any)?.clash_triggered_at
-        ) {
-        setShowClash(true);
+        // Only trigger clash when clash_triggered_at is newly set (not null→null or same value)
+        const lastClashRef = useRef<string | null>(null);
+        const newClash = (payload.new as any)?.clash_triggered_at ?? null;
+        if (newClash && newClash !== lastClashRef.current) {
+          lastClashRef.current = newClash;
+          setShowClash(true);
         }
 
         setSession(incoming);
         sessionRef.current = incoming;
 
         if (isNewSession) {
-        setEntries([]);
-        setHasRolled(false);
+          setEntries([]);
+          setHasRolled(false);
         }
-    }
+      }
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "initiative_rolls" }, async () => {
     const sid = sessionRef.current?.id;
@@ -198,13 +199,17 @@ export function TeamStatus() {
     await loadEntries(session.id);
     };
 
-    const startBattle = async () => {
-  if (!session) return;
-  setShowClash(true);
-  await supabase.from("battle_sessions")
-    .update({ active: true, round: 1, current_turn_index: 0, clash_triggered_at: new Date().toISOString() })
-    .eq("id", session.id);
-  sessionRef.current = { ...session, active: true, round: 1, current_turn_index: 0 };
+  const startBattle = async () => {
+    if (!session) return;
+    const clashTime = new Date().toISOString();
+    lastClashRef.current = clashTime;
+    setShowClash(true);
+    await supabase.from("battle_sessions")
+      .update({ active: true, round: 1, current_turn_index: 0, clash_triggered_at: clashTime })
+      .eq("id", session.id);
+    const updated = { ...session, active: true, round: 1, current_turn_index: 0, clash_triggered_at: clashTime };
+    sessionRef.current = updated;  // ← keep ref in sync
+    setSession(updated);           // ← actually update the UI
   };
 
   const newSession = async () => {
@@ -215,10 +220,17 @@ export function TeamStatus() {
   };
 
   const advanceTurn = async () => {
-    if (!session) return;
-    const next = (session.current_turn_index + 1) % entries.length;
-    const newRound = next === 0 ? session.round + 1 : session.round;
-    await supabase.from("battle_sessions").update({ current_turn_index: next, round: newRound }).eq("id", session.id);
+    const current = sessionRef.current;
+    if (!current) return;
+    const next = (current.current_turn_index + 1) % entries.length;
+    const newRound = next === 0 ? current.round + 1 : current.round;
+    const updated = { ...current, current_turn_index: next, round: newRound };
+    sessionRef.current = updated;   // ← update ref immediately
+    setSession(updated);            // ← update UI immediately, don't wait for realtime
+    await supabase
+      .from("battle_sessions")
+      .update({ current_turn_index: next, round: newRound })
+      .eq("id", current.id);
   };
 
     const addMonster = async () => {
