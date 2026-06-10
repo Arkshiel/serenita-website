@@ -57,8 +57,8 @@ export function TeamStatus() {
   const [monsterDraft, setMonsterDraft] = useState({ name: "", hp: "", ac: "", initiative: "" });
   const [loading, setLoading] = useState(true);
   const sessionRef = useRef<BattleSession | null>(null);
-  const [showClash, setShowClash] = useState(false);
   const lastClashRef = useRef<string | null>(null);
+  const [showClash, setShowClash] = useState(false);
 
   // Check if DM
   useEffect(() => {
@@ -145,7 +145,6 @@ export function TeamStatus() {
         const isNewSession = incoming.id !== sessionRef.current?.id;
 
         // Only trigger clash when clash_triggered_at is newly set (not null→null or same value)
-        const lastClashRef = useRef<string | null>(null);
         const newClash = (payload.new as any)?.clash_triggered_at ?? null;
         if (newClash && newClash !== lastClashRef.current) {
           lastClashRef.current = newClash;
@@ -221,15 +220,34 @@ export function TeamStatus() {
 
   const advanceTurn = async () => {
     const current = sessionRef.current;
-    if (!current) return;
-    const next = (current.current_turn_index + 1) % entries.length;
-    const newRound = next === 0 ? current.round + 1 : current.round;
-    const updated = { ...current, current_turn_index: next, round: newRound };
-    sessionRef.current = updated;   // ← update ref immediately
-    setSession(updated);            // ← update UI immediately, don't wait for realtime
+    if (!current || entries.length === 0) return;
+
+    // Build list of alive indices
+    const aliveIndices = entries.reduce<number[]>((acc, entry, i) => {
+      const char = entry.is_monster
+        ? null
+        : characters.find(c => c.id === entry.character_id) ?? entry.character;
+      const hp = char?.hp ?? entry.monster_hp;
+      if (hp > 0) acc.push(i);
+      return acc;
+    }, []);
+
+    if (aliveIndices.length === 0) return;
+
+    // Find next alive index after current
+    const nextAlive = aliveIndices.find(i => i > current.current_turn_index)
+      ?? aliveIndices[0]; // wrap around to first alive
+
+    const newRound = nextAlive <= current.current_turn_index
+      ? current.round + 1
+      : current.round;
+
+    const updated = { ...current, current_turn_index: nextAlive, round: newRound };
+    sessionRef.current = updated;
+    setSession(updated);
     await supabase
       .from("battle_sessions")
-      .update({ current_turn_index: next, round: newRound })
+      .update({ current_turn_index: nextAlive, round: newRound })
       .eq("id", current.id);
   };
 

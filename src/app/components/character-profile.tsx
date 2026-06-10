@@ -17,6 +17,7 @@ const CLASSES: Record<string, string[]> = {
   Paladin: ["Oath of Devotion", "Oath of Ancients", "Oath of Vengeance", "Oath of Glory"],
   Rogue: ["Thief", "Assassin", "Arcane Trickster", "Phantom", "Soulknife"],
   Cleric: ["Life", "Light", "War", "Trickery", "Knowledge", "Nature", "Tempest"],
+  "Blood Hunter": ["Order of the Ghostslayer", "Order of the Profane Soul", "Order of the Mutant", "Order of the Lycan"],
 };
 
 const SPELLCASTING_CLASSES = ["Sorcerer", "Druid", "Wizard", "Warlock", "Bard", "Paladin", "Ranger", "Cleric"];
@@ -26,7 +27,7 @@ const SPELLCASTING_ABILITY: Record<string, string> = {
 };
 const HIT_DICE: Record<string, number> = {
   Barbarian: 12, Fighter: 10, Paladin: 10, Ranger: 10,
-  Bard: 8, Cleric: 8, Druid: 8, Monk: 8, Rogue: 8, Warlock: 8,
+  Bard: 8, Cleric: 8, Druid: 8, Monk: 8, Rogue: 8, Warlock: 8, "Blood Hunter": 10,
   Sorcerer: 6, Wizard: 6,
 };
 const BASE_SPEED: Record<string, number> = {
