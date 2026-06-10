@@ -21,6 +21,8 @@ interface Character {
   initiative_bonus: number;
   conditions: string[];
   portrait_url: string;
+  player_id: string;
+  spells_v2: { name: string; mana_cost: number; is_cantrip: boolean }[];   
 }
 
 interface InitiativeEntry {
@@ -59,7 +61,11 @@ export function TeamStatus() {
   const sessionRef = useRef<BattleSession | null>(null);
   const lastClashRef = useRef<string | null>(null);
   const [showClash, setShowClash] = useState(false);
+  const [dmCharacter, setDmCharacter] = useState<Character | null>(null);
+  const [spellSheetChar, setSpellSheetChar] = useState<Character | null>(null);
 
+
+  
   // Check if DM
   useEffect(() => {
     if (!user) return;
@@ -68,6 +74,23 @@ export function TeamStatus() {
         if (data?.role === "dungeon_master") setIsDM(true);
       });
   }, [user]);
+
+  useEffect(() => {
+  supabase
+    .from("profiles")
+    .select("id")
+    .eq("role", "dungeon_master")
+    .single()
+    .then(({ data: dmProfile }) => {
+      if (!dmProfile) return;
+      supabase
+        .from("characters")
+        .select("*")
+        .eq("player_id", dmProfile.id)
+        .single()
+        .then(({ data }) => { if (data) setDmCharacter(data); });
+    });
+  }, []);
 
   // Load my character
   useEffect(() => {
@@ -295,19 +318,17 @@ export function TeamStatus() {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {myCharacter && (
+          {dmCharacter && (
             <div style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(196,169,107,0.06)", border: "1px solid rgba(196,169,107,0.2)", borderRadius: 10, padding: "6px 12px 6px 6px" }}>
               <div style={{ width: 36, height: 36, borderRadius: 6, overflow: "hidden", border: "1px solid rgba(196,169,107,0.3)", flexShrink: 0 }}>
-                {myCharacter.portrait_url
-                  ? <img src={myCharacter.portrait_url.split("?")[0]} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
+                {dmCharacter.portrait_url
+                  ? <img src={dmCharacter.portrait_url.split("?")[0]} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
                   : <div style={{ width: "100%", height: "100%", background: "rgba(0,0,0,0.4)" }} />
                 }
               </div>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#e5e0d5", fontFamily: "serif" }}>{myCharacter.character_name}</div>
-                <div style={{ fontSize: 9, color: "#c4a96b", fontFamily: "serif", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-                  {isDM ? "Dungeon Master" : myCharacter?.class}
-                </div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#e5e0d5", fontFamily: "serif" }}>{dmCharacter.character_name}</div>
+                <div style={{ fontSize: 9, color: "#c4a96b", fontFamily: "serif", letterSpacing: "0.1em", textTransform: "uppercase" }}>Dungeon Master</div>
               </div>
             </div>
           )}
@@ -599,6 +620,29 @@ export function TeamStatus() {
             </div>
             ) : null}
 
+            {/* Spell button — only for player characters with spells */}
+            {!entry.is_monster && char && char.spells_v2?.length > 0 && (isDM || char.player_id === user?.id) && (
+              <button
+                onClick={() => setSpellSheetChar(char)}
+                style={{
+                  background: "none",
+                  border: "1px solid rgba(192,132,252,0.3)",
+                  borderRadius: 6,
+                  padding: "4px 8px",
+                  color: "#c084fc",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 10,
+                  fontFamily: "serif",
+                  flexShrink: 0,
+                }}
+              >
+                <Sparkles size={12} /> Spells
+              </button>
+            )}
+
             {/* DM remove button for monsters */}
             {isDM && entry.is_monster && (
                 <button
@@ -616,6 +660,155 @@ export function TeamStatus() {
     })}
     </div>
         {showClash && <SwordClash onComplete={() => setShowClash(false)} />}
+
+      {/* ── Spell Sheet Bottom Sheet ── */}
+      <AnimatePresence>
+        {spellSheetChar && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setSpellSheetChar(null)}
+              style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 50 }}
+            />
+            <motion.div
+              initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 28, stiffness: 300 }}
+              style={{
+                position: "fixed", bottom: 0, left: 0, right: 0,
+                background: "linear-gradient(180deg, #110d08, #0d0a06)",
+                border: "1px solid rgba(192,132,252,0.2)",
+                borderRadius: "16px 16px 0 0",
+                zIndex: 51, maxHeight: "78vh", overflowY: "auto",
+                padding: "20px 16px 48px",
+              }}
+            >
+              {/* Handle */}
+              <div style={{ width: 36, height: 4, background: "rgba(255,255,255,0.1)", borderRadius: 2, margin: "0 auto 20px" }} />
+
+              {/* Header */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div>
+                  <p style={{ fontFamily: "serif", fontSize: 16, fontWeight: 700, color: "#e5e0d5", margin: 0 }}>
+                    {spellSheetChar.character_name}
+                  </p>
+                  <p style={{ fontFamily: "serif", fontSize: 10, color: "#6b7280", margin: "2px 0 0" }}>Spellbook</p>
+                </div>
+                <button onClick={() => setSpellSheetChar(null)}
+                  style={{ background: "none", border: "none", color: "rgba(232,217,181,0.4)", cursor: "pointer", fontSize: 18, padding: 4 }}>✕</button>
+              </div>
+
+              {/* Mana Bar */}
+              <div style={{ marginBottom: 24, padding: "12px 14px", background: "rgba(192,132,252,0.05)", border: "1px solid rgba(192,132,252,0.15)", borderRadius: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ fontFamily: "serif", fontSize: 10, letterSpacing: "0.15em", color: "rgba(192,132,252,0.7)", textTransform: "uppercase" }}>Mana</span>
+                  <span style={{ fontFamily: "serif", fontSize: 14, fontWeight: 700, color: "#c084fc" }}>
+                    {spellSheetChar.mana} / {spellSheetChar.max_mana}
+                  </span>
+                </div>
+                <div style={{ height: 6, background: "rgba(192,132,252,0.12)", borderRadius: 3 }}>
+                  <div style={{
+                    height: "100%",
+                    width: `${Math.max(0, Math.min(100, (spellSheetChar.mana / spellSheetChar.max_mana) * 100))}%`,
+                    background: "linear-gradient(90deg, #7c3aed, #c084fc)",
+                    borderRadius: 3, transition: "width 0.3s ease",
+                  }} />
+                </div>
+              </div>
+
+              {/* Cantrips */}
+              {spellSheetChar.spells_v2?.some(s => s.is_cantrip) && (
+                <div style={{ marginBottom: 20 }}>
+                  <p style={{ fontFamily: "serif", fontSize: 9, letterSpacing: "0.15em", color: "rgba(192,132,252,0.5)", textTransform: "uppercase", marginBottom: 10 }}>Cantrips — Free</p>
+                  {spellSheetChar.spells_v2.filter(s => s.is_cantrip).map((spell, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", marginBottom: 6, background: "rgba(192,132,252,0.04)", border: "1px solid rgba(192,132,252,0.12)", borderRadius: 8 }}>
+                      <span style={{ fontFamily: "serif", fontSize: 14, color: "#e5e0d5" }}>{spell.name}</span>
+                      <span style={{ fontFamily: "serif", fontSize: 9, color: "rgba(192,132,252,0.5)", letterSpacing: "0.1em" }}>✦ FREE</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Leveled Spells */}
+              {spellSheetChar.spells_v2?.some(s => !s.is_cantrip) && (
+                <div>
+                  <p style={{ fontFamily: "serif", fontSize: 9, letterSpacing: "0.15em", color: "rgba(192,132,252,0.5)", textTransform: "uppercase", marginBottom: 10 }}>Spells</p>
+                  {spellSheetChar.spells_v2.filter(s => !s.is_cantrip).map((spell, i) => {
+                    const canCast = spellSheetChar.mana >= spell.mana_cost;
+                    const isOwnChar = spellSheetChar.player_id === user?.id;
+                    return (
+                      <div key={i} style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        padding: "12px 14px", marginBottom: 6,
+                        background: canCast ? "rgba(192,132,252,0.05)" : "rgba(0,0,0,0.2)",
+                        border: `1px solid ${canCast ? "rgba(192,132,252,0.15)" : "rgba(255,255,255,0.04)"}`,
+                        borderRadius: 8, opacity: canCast ? 1 : 0.45,
+                      }}>
+                        <div>
+                          <span style={{ fontFamily: "serif", fontSize: 14, color: "#e5e0d5" }}>{spell.name}</span>
+                          <span style={{ fontFamily: "serif", fontSize: 10, color: "rgba(192,132,252,0.5)", marginLeft: 10 }}>{spell.mana_cost} mana</span>
+                        </div>
+                        {isOwnChar && (
+                          <button
+                            disabled={!canCast}
+                            onClick={async () => {
+                              const newMana = spellSheetChar.mana - spell.mana_cost;
+                              await supabase.from("characters")
+                                .update({ mana: newMana })
+                                .eq("id", spellSheetChar.id);
+                              // Update local state so bar animates immediately
+                              setSpellSheetChar(prev => prev ? { ...prev, mana: newMana } : prev);
+                              setCharacters(prev => prev.map(c => c.id === spellSheetChar.id ? { ...c, mana: newMana } : c));
+                            }}
+                            style={{
+                              padding: "6px 16px",
+                              background: canCast ? "rgba(192,132,252,0.12)" : "transparent",
+                              border: `1px solid ${canCast ? "rgba(192,132,252,0.4)" : "rgba(255,255,255,0.06)"}`,
+                              borderRadius: 6,
+                              color: canCast ? "#c084fc" : "rgba(255,255,255,0.15)",
+                              cursor: canCast ? "pointer" : "not-allowed",
+                              fontFamily: "serif", fontSize: 11,
+                            }}
+                          >
+                            Cast
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* DM mana cost editor */}
+              {isDM && (
+                <div style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                  <p style={{ fontFamily: "serif", fontSize: 9, letterSpacing: "0.15em", color: "rgba(212,175,55,0.4)", textTransform: "uppercase", marginBottom: 12 }}>DM — Edit Mana Costs</p>
+                  {spellSheetChar.spells_v2?.filter(s => !s.is_cantrip).map((spell, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                      <span style={{ fontFamily: "serif", fontSize: 13, color: "#e5e0d5", flex: 1 }}>{spell.name}</span>
+                      <input
+                        type="number" min={1} max={13}
+                        defaultValue={spell.mana_cost}
+                        onBlur={async (e) => {
+                          const newCost = Number(e.target.value);
+                          const updatedSpells = spellSheetChar.spells_v2.map((s, idx) =>
+                            idx === i ? { ...s, mana_cost: newCost } : s
+                          );
+                          await supabase.from("characters")
+                            .update({ spells_v2: updatedSpells })
+                            .eq("id", spellSheetChar.id);
+                          setSpellSheetChar(prev => prev ? { ...prev, spells_v2: updatedSpells } : prev);
+                        }}
+                        style={{ width: 52, padding: "4px 6px", background: "rgba(0,0,0,0.4)", border: "1px solid rgba(212,175,55,0.2)", borderRadius: 4, color: "#c084fc", fontFamily: "serif", fontSize: 12, textAlign: "center" }}
+                      />
+                      <span style={{ fontFamily: "serif", fontSize: 10, color: "rgba(192,132,252,0.4)" }}>mana</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

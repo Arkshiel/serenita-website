@@ -97,6 +97,12 @@ interface Attack {
   range: string;
 }
 
+interface Spell {
+  name: string;
+  mana_cost: number;
+  is_cantrip: boolean;
+}
+
 interface Character {
   id?: string; player_id?: string;
   // Identity
@@ -249,6 +255,8 @@ export function CharacterProfile() {
   const [spellsText, setSpellsText] = useState("");
   const [equipText, setEquipText] = useState("");
   const [featuresText, setFeaturesText] = useState("");
+  const [spells, setSpells] = useState<Spell[]>([]);
+  const [spellSheetChar, setSpellSheetChar] = useState<any | null>(null);
 
   useEffect(() => {
   console.log("CharacterProfile mounted");
@@ -266,6 +274,7 @@ export function CharacterProfile() {
         setSpellsText((data.spells_known || []).join("\n"));
         setEquipText((data.equipment || []).join("\n"));
         setFeaturesText((data.features || []).join("\n"));
+        setSpells(data.spells_v2 || []);
       }
       setLoading(false);
     })();
@@ -280,7 +289,6 @@ export function CharacterProfile() {
     return {
       ...c,
       proficiency_bonus: profBonus,
-      ac: calcAC(c.class, c.dexterity, c.constitution, c.wisdom),
       max_hp: c.class ? calcMaxHp(c.class, c.constitution, c.level) : c.max_hp,
       passive_perception: 10 + wisMod + perceptionProf,
       speed: calcSpeed(c.race),
@@ -347,18 +355,13 @@ export function CharacterProfile() {
     spells_known: spellsText.split("\n").map((s) => s.trim()).filter(Boolean),
     equipment: equipText.split("\n").map((s) => s.trim()).filter(Boolean),
     features: featuresText.split("\n").map((s) => s.trim()).filter(Boolean),
+    spells_v2: spells,
   };
   if (exists) { await supabase.from("characters").update(payload).eq("player_id", user.id); }
   else { await supabase.from("characters").insert(payload); setExists(true); }
   setSaving(false); setSaved(true);
   setTimeout(() => setSaved(false), 2500);
 };
-
-if (loading) return (
-  <div style={{ textAlign: "center", padding: "60px 0" }}>
-    <p style={{ fontFamily: "'Cinzel', serif", color: "rgba(212,175,55,0.4)", fontSize: "0.7rem", letterSpacing: "0.2em" }}>Loading...</p>
-  </div>
-);
 
   if (loading) return (
     <div style={{ textAlign: "center", padding: "60px 0" }}>
@@ -488,7 +491,13 @@ if (loading) return (
         <SectionTitle title="Derived Stats (Auto-Calculated)" />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
           {readonlyBox(character.max_hp, "Max HP", "#f87171", `d${HIT_DICE[character.class] ?? 8} × Lvl ${character.level}`)}
-          {readonlyBox(character.ac, "Armor Class", "#60a5fa", character.class === "Barbarian" ? "10+DEX+CON" : character.class === "Monk" ? "10+DEX+WIS" : "10+DEX")}
+          <div style={{ padding: "12px 14px", background: "rgba(13,17,32,0.8)", border: "1px solid #60a5fa22" }}>
+            <p style={{ fontFamily: "'Cinzel', serif", fontSize: "0.45rem", letterSpacing: "0.15em", color: "rgba(212,175,55,0.35)", textTransform: "uppercase", marginBottom: 2 }}>Armor Class</p>
+            <p style={{ fontFamily: "'Cinzel', serif", fontSize: "0.4rem", color: "rgba(96,165,250,0.4)", marginBottom: 6 }}>Set manually — include armor & modifiers</p>
+            <input type="number" min={1} value={character.ac}
+              onChange={(e) => set("ac", Number(e.target.value))}
+              style={{ ...inputStyle, padding: "6px 10px", fontSize: "1.1rem", fontWeight: 700, color: "#60a5fa" }} />
+          </div>
 
           <div style={{ padding: "12px 14px", background: "rgba(13,17,32,0.8)", border: "1px solid #34d39922" }}>
             <p style={{ fontFamily: "'Cinzel', serif", fontSize: "0.45rem", letterSpacing: "0.15em", color: "rgba(212,175,55,0.35)", textTransform: "uppercase", marginBottom: 2 }}>Initiative Bonus</p>
@@ -497,7 +506,7 @@ if (loading) return (
               onChange={(e) => set("initiative_bonus", Number(e.target.value))}
               style={{ ...inputStyle, padding: "6px 10px", fontSize: "1.1rem", fontWeight: 700, color: "#34d399" }} />
           </div>
-          
+
           {readonlyBox("+" + character.proficiency_bonus, "Prof. Bonus", "#fbbf24", `Level ${character.level}`)}
           {readonlyBox(character.passive_perception, "Passive Perc.", "#a78bfa", "10 + WIS + skill")}
           {readonlyBox(character.speed + " ft", "Speed", "#7ecac3", character.race || "base 30")}
@@ -576,50 +585,81 @@ if (loading) return (
               {readonlyBox("+" + spellAttackBonus, "Spell Attack", "#c084fc", "PB + mod")}
             </div>
 
-            {/* Spell Slots */}
-            <div style={{ marginBottom: 20 }}>
-              <label style={labelStyle}>Spell Slots</label>
-              <p style={{ fontFamily: "'Crimson Pro', serif", fontSize: "0.82rem", color: "rgba(232,217,181,0.35)", marginBottom: 10 }}>
-                Track used slots — DM sets the totals per level.
-              </p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                {[1,2,3,4,5,6,7,8,9].map((lvl) => {
-                  const key = String(lvl);
-                  const total = character.spell_slots[key] ?? 0;
-                  const used  = character.spell_slots_used[key] ?? 0;
-                  if (total === 0) return null;
-                  return (
-                    <div key={lvl} style={{ padding: "10px 12px", background: "rgba(13,17,32,0.8)", border: "1px solid rgba(192,132,252,0.15)" }}>
-                      <p style={{ fontFamily: "'Cinzel', serif", fontSize: "0.45rem", letterSpacing: "0.15em", color: "rgba(212,175,55,0.4)", textTransform: "uppercase", marginBottom: 6 }}>
-                        Level {lvl}
-                      </p>
-                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 6 }}>
-                        {Array.from({ length: total }).map((_, i) => {
-                          const spent = i < used;
-                          return (
-                            <button key={i}
-                              onClick={() => {
-                                const next = { ...character.spell_slots_used, [key]: spent ? Math.max(0, used - 1) : used + 1 };
-                                setCharacter((prev) => ({ ...prev, spell_slots_used: next }));
-                              }}
-                              style={{ width: 18, height: 18, border: `1px solid ${spent ? "rgba(192,132,252,0.3)" : "rgba(192,132,252,0.7)"}`, borderRadius: "50%", background: spent ? "rgba(192,132,252,0.15)" : "rgba(192,132,252,0.35)", cursor: "pointer", padding: 0 }} />
-                          );
-                        })}
-                      </div>
-                      <p style={{ fontFamily: "'Cinzel', serif", fontSize: "0.5rem", color: "rgba(192,132,252,0.5)" }}>
-                        {total - used}/{total} left
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
+            {/* Spell Editor */}
             <div style={{ marginBottom: 24 }}>
-              <label style={labelStyle}>Spells Known (one per line)</label>
-              <textarea style={{ ...inputStyle, minHeight: 120, resize: "vertical" as const }}
-                placeholder={"Fireball\nMagic Missile\nShield\n..."}
-                value={spellsText} onChange={(e) => setSpellsText(e.target.value)} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <p style={{ fontFamily: "'Crimson Pro', serif", fontSize: "0.82rem", color: "rgba(232,217,181,0.35)" }}>
+                  Add your spells and set their mana cost.
+                </p>
+                <button onClick={() => setSpells(s => [...s, { name: "", mana_cost: 2, is_cantrip: false }])}
+                  style={{ padding: "6px 14px", background: "transparent", border: "1px solid rgba(192,132,252,0.3)", color: "#c084fc", cursor: "pointer", fontFamily: "'Cinzel', serif", fontSize: "0.55rem", letterSpacing: "0.15em", textTransform: "uppercase" }}>
+                  + Add Spell
+                </button>
+              </div>
+
+              {spells.length === 0 && (
+                <p style={{ fontFamily: "'Crimson Pro', serif", fontSize: "0.82rem", color: "rgba(232,217,181,0.2)", textAlign: "center", padding: "20px 0" }}>
+                  No spells added yet.
+                </p>
+              )}
+
+              {/* Cantrips */}
+              {spells.some(s => s.is_cantrip) && (
+                <div style={{ marginBottom: 12 }}>
+                  <p style={{ fontFamily: "'Cinzel', serif", fontSize: "0.5rem", letterSpacing: "0.15em", color: "rgba(192,132,252,0.5)", textTransform: "uppercase", marginBottom: 8 }}>Cantrips — Free</p>
+                  {spells.map((spell, i) => !spell.is_cantrip ? null : (
+                    <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                      <input
+                        placeholder="Spell name"
+                        value={spell.name}
+                        onChange={e => setSpells(s => s.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x))}
+                        style={{ ...inputStyle, flex: 1, padding: "8px 10px", fontSize: "0.85rem" }}
+                      />
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "rgba(192,132,252,0.08)", border: "1px solid rgba(192,132,252,0.2)", color: "#c084fc", fontFamily: "'Cinzel', serif", fontSize: "0.55rem", letterSpacing: "0.1em", whiteSpace: "nowrap" }}>
+                        ✦ CANTRIP
+                      </div>
+                      <button onClick={() => setSpells(s => s.map((x, idx) => idx === i ? { ...x, is_cantrip: false } : x))}
+                        style={{ padding: "8px 10px", background: "transparent", border: "1px solid rgba(212,175,55,0.2)", color: "rgba(212,175,55,0.4)", cursor: "pointer", fontSize: "0.7rem", fontFamily: "'Cinzel', serif" }}>
+                        → Spell
+                      </button>
+                      <button onClick={() => setSpells(s => s.filter((_, idx) => idx !== i))}
+                        style={{ background: "none", border: "1px solid rgba(248,113,113,0.3)", color: "#f87171", cursor: "pointer", padding: "8px", fontSize: "0.8rem" }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Leveled Spells */}
+              {spells.some(s => !s.is_cantrip) && (
+                <div>
+                  <p style={{ fontFamily: "'Cinzel', serif", fontSize: "0.5rem", letterSpacing: "0.15em", color: "rgba(192,132,252,0.5)", textTransform: "uppercase", marginBottom: 8 }}>Spells</p>
+                  {spells.map((spell, i) => spell.is_cantrip ? null : (
+                    <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                      <input
+                        placeholder="Spell name"
+                        value={spell.name}
+                        onChange={e => setSpells(s => s.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x))}
+                        style={{ ...inputStyle, flex: 1, padding: "8px 10px", fontSize: "0.85rem" }}
+                      />
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <input
+                          type="number" min={1} max={13}
+                          value={spell.mana_cost}
+                          onChange={e => setSpells(s => s.map((x, idx) => idx === i ? { ...x, mana_cost: Number(e.target.value) } : x))}
+                          style={{ ...inputStyle, width: 52, padding: "8px 6px", fontSize: "0.85rem", textAlign: "center", color: "#c084fc" }}
+                        />
+                        <span style={{ fontFamily: "'Cinzel', serif", fontSize: "0.5rem", color: "rgba(192,132,252,0.5)", whiteSpace: "nowrap" }}>mana</span>
+                      </div>
+                      <button onClick={() => setSpells(s => s.map((x, idx) => idx === i ? { ...x, is_cantrip: true, mana_cost: 0 } : x))}
+                        style={{ padding: "8px 10px", background: "transparent", border: "1px solid rgba(192,132,252,0.2)", color: "rgba(192,132,252,0.4)", cursor: "pointer", fontSize: "0.7rem", fontFamily: "'Cinzel', serif", whiteSpace: "nowrap" }}>
+                        → Cantrip
+                      </button>
+                      <button onClick={() => setSpells(s => s.filter((_, idx) => idx !== i))}
+                        style={{ background: "none", border: "1px solid rgba(248,113,113,0.3)", color: "#f87171", cursor: "pointer", padding: "8px", fontSize: "0.8rem" }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </>
         )}
