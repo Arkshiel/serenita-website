@@ -32,7 +32,7 @@ interface InitiativeEntry {
   monster_max_hp: number;
   monster_ac: number;
   initiative: number;
-  conditions: string[];
+  conditions: { name: string; turns: number }[];
   // joined
   character?: Character;
 }
@@ -81,6 +81,7 @@ export function TeamStatus() {
     supabase.from("characters").select("*").order("created_at", { ascending: true }).then(({ data }) => {
         if (data) setCharacters([...data]);
     });
+    // Also keep myCharacter loaded via the existing useEffect above
     }, []);
 
   // Load or create session + entries
@@ -186,7 +187,8 @@ export function TeamStatus() {
     const rollInitiative = async () => {
     if (!myCharacter || !session || hasRolled) return;
     const d20 = Math.floor(Math.random() * 20) + 1;
-    const total = d20 + (myCharacter.initiative_bonus ?? 0);
+    const dexMod = Math.floor(((myCharacter.dexterity ?? 10) - 10) / 2);
+    const total = d20 + dexMod + (myCharacter.initiative_bonus ?? 0);
     await supabase.from("initiative_rolls").insert({
         session_id: session.id,
         character_id: myCharacter.id,
@@ -221,6 +223,17 @@ export function TeamStatus() {
   const advanceTurn = async () => {
     const current = sessionRef.current;
     if (!current || entries.length === 0) return;
+
+    // Tick down condition turns for the entry whose turn just ended
+  const currentEntry = entries[current.current_turn_index];
+  if (currentEntry) {
+    const updatedConditions = currentEntry.conditions
+      .map(c => ({ ...c, turns: c.turns - 1 }))
+      .filter(c => c.turns > 0);
+    await supabase.from("initiative_rolls")
+      .update({ conditions: updatedConditions })
+      .eq("id", currentEntry.id);
+  }
 
     // Build list of alive indices
     const aliveIndices = entries.reduce<number[]>((acc, entry, i) => {
@@ -268,8 +281,6 @@ export function TeamStatus() {
         initiative: init,
         conditions: [],
     });
-    setMonsterDraft({ name: "", hp: "", ac: "", initiative: "" });
-    setShowMonsterForm(false);
     await loadEntries(session.id); // force reload
     };
 
@@ -283,13 +294,29 @@ export function TeamStatus() {
     <div style={{ maxWidth: 800, margin: "0 auto", padding: "0 16px" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-        <div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: "#c4a96b", fontFamily: "serif", margin: 0 }}>
-            {session?.active ? `⚔ Battle — Round ${session.round}` : "Session Hub"}
-          </h2>
-          <p style={{ fontSize: 11, color: "#6b7280", margin: "2px 0 0", fontFamily: "serif" }}>
-            {session?.active ? `${entries.length} combatants` : "Waiting for battle to begin"}
-          </p>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {myCharacter && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(196,169,107,0.06)", border: "1px solid rgba(196,169,107,0.2)", borderRadius: 10, padding: "6px 12px 6px 6px" }}>
+              <div style={{ width: 36, height: 36, borderRadius: 6, overflow: "hidden", border: "1px solid rgba(196,169,107,0.3)", flexShrink: 0 }}>
+                {myCharacter.portrait_url
+                  ? <img src={myCharacter.portrait_url.split("?")[0]} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
+                  : <div style={{ width: "100%", height: "100%", background: "rgba(0,0,0,0.4)" }} />
+                }
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#e5e0d5", fontFamily: "serif" }}>{myCharacter.character_name}</div>
+                <div style={{ fontSize: 9, color: "#c4a96b", fontFamily: "serif", letterSpacing: "0.1em", textTransform: "uppercase" }}>Dungeon Master</div>
+              </div>
+            </div>
+          )}
+          <div>
+            <h2 style={{ fontSize: 20, fontWeight: 700, color: "#c4a96b", fontFamily: "serif", margin: 0 }}>
+              {session?.active ? `⚔ Battle — Round ${session.round}` : "Session Hub"}
+            </h2>
+            <p style={{ fontSize: 11, color: "#6b7280", margin: "2px 0 0", fontFamily: "serif" }}>
+              {session?.active ? `${entries.length} combatants` : "Waiting for battle to begin"}
+            </p>
+          </div>
         </div>
         {isDM && (
         <div style={{ display: "flex", gap: 8 }}>
@@ -317,7 +344,7 @@ export function TeamStatus() {
         {/* Party overview — always visible */}
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 20 }}>
         <p style={{ fontSize: 10, color: "#6b7280", fontFamily: "serif", letterSpacing: "0.15em", textTransform: "uppercase", margin: "0 0 6px" }}>Party</p>
-        {characters.map(char => (
+        {characters.filter(char => char.id !== myCharacter?.id || !isDM).map(char => (
             <div key={char.id} style={{
             background: "rgba(30,24,16,0.7)", border: "1px solid rgba(255,255,255,0.06)",
             borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 12,
@@ -377,7 +404,10 @@ export function TeamStatus() {
             </div>
             ))}
             <button onClick={addMonster} style={{ ...dmBtnStyle("#f87171"), alignSelf: "flex-end" }}>
-            <Plus size={13} /> Add
+              <Plus size={13} /> Add
+            </button>
+            <button onClick={() => { setShowMonsterForm(false); setMonsterDraft({ name: "", hp: "", ac: "", initiative: "" }); }} style={{ ...dmBtnStyle("#6b7280"), alignSelf: "flex-end" }}>
+              <X size={13} /> Done
             </button>
         </motion.div>
         )}
@@ -403,7 +433,7 @@ export function TeamStatus() {
               color: "#c4a96b", fontFamily: "serif", fontSize: 14,
               cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8,
             }}>
-              <Swords size={15} /> Roll Initiative (d20 + {myCharacter?.initiative_bonus ?? 0})
+              <Swords size={15} /> Roll Initiative (d20 + {Math.floor(((myCharacter?.dexterity ?? 10) - 10) / 2) + (myCharacter?.initiative_bonus ?? 0)})
             </button>
           )}
         </motion.div>
@@ -512,18 +542,33 @@ export function TeamStatus() {
             </div>
             {/* Conditions */}
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
-                {entry.conditions?.map(c => (
-                <span key={c} onClick={async () => {
-                    if (!isDM) return;
-                    const updated = entry.conditions.filter(x => x !== c);
-                    await supabase.from("initiative_rolls").update({ conditions: updated }).eq("id", entry.id);
-                    await loadEntries(session!.id);
-                }} style={{ fontSize: 9, padding: "1px 6px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#9ca3af", cursor: isDM ? "pointer" : "default" }}>{c} {isDM && "×"}</span>
+                {entry.conditions?.map((c, i) => (
+                  <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 9, padding: "1px 6px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#9ca3af" }}>
+                    {c.name}
+                    {isDM && (
+                      <>
+                        <input type="number" min={1} max={99} value={c.turns}
+                          onChange={async (e) => {
+                            const updated = entry.conditions.map((x, idx) => idx === i ? { ...x, turns: Number(e.target.value) } : x);
+                            await supabase.from("initiative_rolls").update({ conditions: updated }).eq("id", entry.id);
+                            await loadEntries(session!.id);
+                          }}
+                          style={{ width: 28, background: "transparent", border: "none", color: "#c4a96b", fontFamily: "serif", fontSize: 9, textAlign: "center" }}
+                        />
+                        <span style={{ color: "#6b7280" }}>t</span>
+                        <span onClick={async () => {
+                          const updated = entry.conditions.filter((_, idx) => idx !== i);
+                          await supabase.from("initiative_rolls").update({ conditions: updated }).eq("id", entry.id);
+                          await loadEntries(session!.id);
+                        }} style={{ cursor: "pointer", color: "#ef4444" }}>×</span>
+                      </>
+                    )}
+                  </span>
                 ))}
-                {isDM && entry.is_monster && (
+                {isDM && (
                 <select onChange={async (e) => {
                     if (!e.target.value) return;
-                    const updated = [...(entry.conditions || []), e.target.value];
+                    const updated = [...(entry.conditions || []), { name: e.target.value, turns: 1 }];
                     await supabase.from("initiative_rolls").update({ conditions: updated }).eq("id", entry.id);
                     await loadEntries(session!.id);
                     e.target.value = "";

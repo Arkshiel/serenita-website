@@ -280,7 +280,6 @@ export function CharacterProfile() {
     return {
       ...c,
       proficiency_bonus: profBonus,
-      initiative_bonus: dexMod,
       ac: calcAC(c.class, c.dexterity, c.constitution, c.wisdom),
       max_hp: c.class ? calcMaxHp(c.class, c.constitution, c.level) : c.max_hp,
       passive_perception: 10 + wisMod + perceptionProf,
@@ -490,7 +489,15 @@ if (loading) return (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
           {readonlyBox(character.max_hp, "Max HP", "#f87171", `d${HIT_DICE[character.class] ?? 8} × Lvl ${character.level}`)}
           {readonlyBox(character.ac, "Armor Class", "#60a5fa", character.class === "Barbarian" ? "10+DEX+CON" : character.class === "Monk" ? "10+DEX+WIS" : "10+DEX")}
-          {readonlyBox((character.initiative_bonus >= 0 ? "+" : "") + character.initiative_bonus, "Initiative", "#34d399", "DEX mod")}
+
+          <div style={{ padding: "12px 14px", background: "rgba(13,17,32,0.8)", border: "1px solid #34d39922" }}>
+            <p style={{ fontFamily: "'Cinzel', serif", fontSize: "0.45rem", letterSpacing: "0.15em", color: "rgba(212,175,55,0.35)", textTransform: "uppercase", marginBottom: 2 }}>Initiative Bonus</p>
+            <p style={{ fontFamily: "'Cinzel', serif", fontSize: "0.4rem", color: "rgba(52,211,153,0.4)", marginBottom: 6 }}>DEX auto-added on roll — add feats/items here</p>
+            <input type="number" value={character.initiative_bonus}
+              onChange={(e) => set("initiative_bonus", Number(e.target.value))}
+              style={{ ...inputStyle, padding: "6px 10px", fontSize: "1.1rem", fontWeight: 700, color: "#34d399" }} />
+          </div>
+          
           {readonlyBox("+" + character.proficiency_bonus, "Prof. Bonus", "#fbbf24", `Level ${character.level}`)}
           {readonlyBox(character.passive_perception, "Passive Perc.", "#a78bfa", "10 + WIS + skill")}
           {readonlyBox(character.speed + " ft", "Speed", "#7ecac3", character.race || "base 30")}

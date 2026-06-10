@@ -31,7 +31,7 @@ interface Adventurer {
   max_hp: number;
   mana: number;
   max_mana: number;
-  profiles: { username: string };
+  profiles: { username: string; role: string };
 }
 
 // ─── Card ─────────────────────────────────────────────────────────────────────
@@ -232,7 +232,7 @@ export function AdventurersPage() {
         .from("characters")
         .select(`
           *,
-          profiles (username)
+          profiles (username, role)
         `)
         .not("character_name", "is", null)
         .order("created_at", { ascending: true });
@@ -294,8 +294,8 @@ export function AdventurersPage() {
             background: "rgba(212,175,55,0.04)",
           }}>
             {[
-              { icon: Sword,  label: "Party Size", value: adventurers.length },
-              { icon: Shield, label: "Active",     value: adventurers.length },
+              { icon: Sword,  label: "Party Size", value: adventurers.filter(a => a.profiles?.role !== "dungeon_master").length },
+              { icon: Shield, label: "Active",     value: adventurers.filter(a => a.profiles?.role !== "dungeon_master").length },
               { icon: Star,   label: "Tier",       value: "Wanderer" },
             ].map(({ icon: Icon, label, value }) => (
               <div key={label} style={{ textAlign: "center" }}>
