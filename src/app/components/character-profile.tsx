@@ -21,6 +21,7 @@ const CLASSES: Record<string, string[]> = {
 };
 
 const SPELLCASTING_CLASSES = ["Sorcerer", "Druid", "Wizard", "Warlock", "Bard", "Paladin", "Ranger", "Cleric"];
+const SPELLCASTING_SUBCLASSES = ["Arcane Trickster", "Eldritch Knight", "Order of the Profane Soul"];
 const SPELLCASTING_ABILITY: Record<string, string> = {
   Sorcerer: "charisma", Bard: "charisma", Warlock: "charisma", Paladin: "charisma",
   Wizard: "intelligence", Cleric: "wisdom", Druid: "wisdom", Ranger: "wisdom",
@@ -291,7 +292,7 @@ export function CharacterProfile() {
       proficiency_bonus: profBonus,
       max_hp: c.class ? calcMaxHp(c.class, c.constitution, c.level) : c.max_hp,
       passive_perception: 10 + wisMod + perceptionProf,
-      speed: calcSpeed(c.race),
+      speed: c.speed || calcSpeed(c.race),
       hit_dice: `${c.level}d${die}`,
       spellcasting_ability: SPELLCASTING_ABILITY[c.class] || c.spellcasting_ability,
     };
@@ -370,7 +371,7 @@ export function CharacterProfile() {
   );
 
   const subclasses = CLASSES[character.class] ?? [];
-  const isSpellcaster = SPELLCASTING_CLASSES.includes(character.class);
+  const isSpellcaster = SPELLCASTING_CLASSES.includes(character.class) || SPELLCASTING_SUBCLASSES.includes(character.subclass);
   const profBonus = pb(character.level);
   const spellAbilityScore = character[character.spellcasting_ability as keyof Character] as number || 10;
   const spellSaveDC = 8 + profBonus + mod(spellAbilityScore);
@@ -509,7 +510,13 @@ export function CharacterProfile() {
 
           {readonlyBox("+" + character.proficiency_bonus, "Prof. Bonus", "#fbbf24", `Level ${character.level}`)}
           {readonlyBox(character.passive_perception, "Passive Perc.", "#a78bfa", "10 + WIS + skill")}
-          {readonlyBox(character.speed + " ft", "Speed", "#7ecac3", character.race || "base 30")}
+          <div style={{ padding: "12px 14px", background: "rgba(13,17,32,0.8)", border: "1px solid #7ecac322" }}>
+            <p style={{ fontFamily: "'Cinzel', serif", fontSize: "0.45rem", letterSpacing: "0.15em", color: "rgba(212,175,55,0.35)", textTransform: "uppercase", marginBottom: 2 }}>Speed</p>
+            <p style={{ fontFamily: "'Cinzel', serif", fontSize: "0.4rem", color: "rgba(124,202,195,0.4)", marginBottom: 6 }}>ft — edit if you have movement bonuses</p>
+            <input type="number" min={0} value={character.speed}
+              onChange={(e) => set("speed", Number(e.target.value))}
+              style={{ ...inputStyle, padding: "6px 10px", fontSize: "1.1rem", fontWeight: 700, color: "#7ecac3" }} />
+          </div>
           {readonlyBox(character.hit_dice, "Hit Dice", "#f97316")}
         </div>
 

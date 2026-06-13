@@ -170,7 +170,8 @@ export function TeamStatus() {
 
         // Only trigger clash when clash_triggered_at is newly set (not null→null or same value)
         const newClash = (payload.new as any)?.clash_triggered_at ?? null;
-        if (newClash && newClash !== lastClashRef.current) {
+        const prevClash = (payload.old as any)?.clash_triggered_at ?? null;
+        if (newClash && newClash !== prevClash && newClash !== lastClashRef.current) {
           lastClashRef.current = newClash;
           setShowClash(true);
         }
@@ -262,7 +263,8 @@ export function TeamStatus() {
     const aliveIndices = entries.reduce<number[]>((acc, entry, i) => {
       const char = entry.is_monster
         ? null
-        : characters.find(c => c.id === entry.character_id) ?? entry.character;
+        : characters.find(c => c.id === entry.character_id) ?? entry.character ?? null;
+      const charSpells = char?.spells_v2 ?? (entry.character as any)?.spells_v2 ?? [];
       const hp = char?.hp ?? entry.monster_hp;
       if (hp > 0) acc.push(i);
       return acc;
@@ -283,7 +285,7 @@ export function TeamStatus() {
     setSession(updated);
     await supabase
       .from("battle_sessions")
-      .update({ current_turn_index: nextAlive, round: newRound })
+      .update({ current_turn_index: nextAlive, round: newRound, clash_triggered_at: null })
       .eq("id", current.id);
   };
 
@@ -322,7 +324,7 @@ export function TeamStatus() {
             <div style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(196,169,107,0.06)", border: "1px solid rgba(196,169,107,0.2)", borderRadius: 10, padding: "6px 12px 6px 6px" }}>
               <div style={{ width: 36, height: 36, borderRadius: 6, overflow: "hidden", border: "1px solid rgba(196,169,107,0.3)", flexShrink: 0 }}>
                 {dmCharacter.portrait_url
-                  ? <img src={dmCharacter.portrait_url.split("?")[0]} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
+                  ? <img src={dmCharacter.portrait_url} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
                   : <div style={{ width: "100%", height: "100%", background: "rgba(0,0,0,0.4)" }} />
                 }
               </div>
@@ -374,7 +376,7 @@ export function TeamStatus() {
             }}>
             <div style={{ width: 36, height: 36, borderRadius: 6, overflow: "hidden", border: "1px solid rgba(196,169,107,0.2)", background: "rgba(0,0,0,0.4)", flexShrink: 0 }}>
                 {char.portrait_url
-                ? <img src={char.portrait_url.split("?")[0]} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
+                ? <img src={char.portrait_url} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
                 : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#4b5563", fontSize: 14 }}>?</div>
                 }
             </div>
@@ -473,8 +475,9 @@ export function TeamStatus() {
     {entries.map((entry, index) => {
         const isCurrentTurn = session?.active && session.current_turn_index === index;
         const char = entry.is_monster
-        ? null
-        : characters.find(c => c.id === entry.character_id) ?? entry.character;
+          ? null
+          : characters.find(c => c.id === entry.character_id) ?? entry.character ?? null;
+        const charSpells = char?.spells_v2 ?? (entry.character as any)?.spells_v2 ?? [];
         const hp = char?.hp ?? entry.monster_hp;
         const maxHp = char?.max_hp ?? entry.monster_max_hp;
         const hpPct = maxHp > 0 ? Math.min(100, (hp / maxHp) * 100) : 0;
@@ -513,7 +516,7 @@ export function TeamStatus() {
             display: "flex", alignItems: "center", justifyContent: "center",
             }}>
             {char?.portrait_url
-                ? <img src={char.portrait_url.split("?")[0]} alt={char.character_name} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
+                ? <img src={char.portrait_url} alt={char.character_name} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
                 : <Skull size={16} color={entry.is_monster ? "#ef4444" : "#6b7280"} />
             }
             </div>
@@ -621,7 +624,7 @@ export function TeamStatus() {
             ) : null}
 
             {/* Spell button — only for player characters with spells */}
-            {!entry.is_monster && char && char.spells_v2?.length > 0 && (isDM || char.player_id === user?.id) && (
+            {!entry.is_monster && char && charSpells.length > 0 && (isDM || char.player_id === user?.id) && (
               <button
                 onClick={() => setSpellSheetChar(char)}
                 style={{
