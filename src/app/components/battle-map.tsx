@@ -270,6 +270,14 @@ const addToken = async (entry: InitiativeEntry) => {
     };
 
     const onTouchMove = (e: React.TouchEvent) => {
+        if (paintMode === "pen" && isDrawing && e.touches.length === 1) {
+            const touch = e.touches[0];
+            const rect = containerRef.current!.getBoundingClientRect();
+            const px = (touch.clientX - rect.left - pan.x) / scale;
+            const py = (touch.clientY - rect.top - pan.y) / scale;
+            setCurrentStroke(prev => [...prev, { x: px, y: py }]);
+            return;
+        }
     if (e.touches.length === 2) {
         // Pinch zoom + two-finger pan
         const d = Math.hypot(
@@ -316,6 +324,15 @@ const addToken = async (entry: InitiativeEntry) => {
     };
 
     const onTouchEnd = async () => {
+
+        if (paintMode === "pen" && isDrawing && currentStroke.length > 1) {
+            setIsDrawing(false);
+            const newDrawings = [...drawings, { points: currentStroke, color: penColor }];
+            setDrawings(newDrawings);
+            setCurrentStroke([]);
+            await supabase.from("battle_sessions").update({ map_drawings: newDrawings }).eq("id", sessionId);
+            return;
+        }
     pinchDist.current = null;
     if (draggingId) {
         const token = tokens.find(t => t.id === draggingId);
@@ -326,26 +343,36 @@ const addToken = async (entry: InitiativeEntry) => {
     };
 
     const onTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length === 2) {
-        // Two fingers — record pinch distance and stop any token drag
-        setDraggingId(null);
+        if (paintMode === "pen" && e.touches.length === 1) {
+            e.stopPropagation();
+            setIsDrawing(true);
+            const touch = e.touches[0];
+            const rect = containerRef.current!.getBoundingClientRect();
+            const px = (touch.clientX - rect.left - pan.x) / scale;
+            const py = (touch.clientY - rect.top - pan.y) / scale;
+            setCurrentStroke([{ x: px, y: py }]);
+            return;
+        }
+        if (e.touches.length === 2) {
+            // Two fingers — record pinch distance and stop any token drag
+            setDraggingId(null);
+            touchOnToken.current = false;
+            const d = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+            );
+            pinchDist.current = d;
+            panStart.current = {
+            x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+            y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+            };
+            lastPan.current = { ...pan };
+            return;
+        }
+        // One finger — record pan start
         touchOnToken.current = false;
-        const d = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-        );
-        pinchDist.current = d;
-        panStart.current = {
-        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
-        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
-        };
+        panStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
         lastPan.current = { ...pan };
-        return;
-    }
-    // One finger — record pan start
-    touchOnToken.current = false;
-    panStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-    lastPan.current = { ...pan };
     };
 
   // Wheel zoom
