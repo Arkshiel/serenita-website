@@ -222,15 +222,24 @@ const addToken = async (entry: InitiativeEntry) => {
         setDrawings(newDrawings);
         setCurrentStroke([]);
         await supabase.from("battle_sessions").update({ map_drawings: newDrawings }).eq("id", sessionId);
+        isPanning.current = false;
         return;
     }
     if (paintMode === "eraseDrawing" && drawings.length > 0) {
         const newDrawings = drawings.slice(0, -1);
         setDrawings(newDrawings);
         await supabase.from("battle_sessions").update({ map_drawings: newDrawings }).eq("id", sessionId);
+        isPanning.current = false;
         return;
     }
+    setIsDrawing(false);
+    setCurrentStroke([]);
     isPanning.current = false;
+    if (draggingId) {
+        const token = tokens.find(t => t.id === draggingId);
+        if (token) await supabase.from("map_tokens").update({ x: token.x, y: token.y }).eq("id", token.id);
+        setDraggingId(null);
+    }
     };
 
     const clearDrawings = async () => {
