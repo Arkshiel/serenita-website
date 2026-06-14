@@ -59,6 +59,7 @@ export function BattleMap({ sessionId, isDM, userId, characters, entries, onClos
     const [currentStroke, setCurrentStroke] = useState<{x: number, y: number}[]>([]);
     const [penColor, setPenColor] = useState("#ef4444");
     const [paintMode, setPaintMode] = useState<"none" | "wall" | "erase" | "pen" | "eraseDrawing">("none");
+    const touchOnToken = useRef(false);
   
 
     useEffect(() => {
@@ -109,6 +110,8 @@ export function BattleMap({ sessionId, isDM, userId, characters, entries, onClos
     const data = (payload.new as any);
     if (data?.map_walls) setWalls(data.map_walls);
     if (data?.map_drawings) setDrawings(data.map_drawings);
+    if (data?.map_rows) setRows(data.map_rows);
+    if (data?.map_cols) setCols(data.map_cols);
     })
 .subscribe();
     return () => { supabase.removeChannel(ch); };
@@ -242,64 +245,68 @@ const addToken = async (entry: InitiativeEntry) => {
     };
 
   // Touch drag
-  const onTokenTouchStart = (e: React.TouchEvent, token: MapToken) => {
+    const onTokenTouchStart = (e: React.TouchEvent, token: MapToken) => {
     if (!canMove(token)) return;
     e.stopPropagation();
+    e.preventDefault();
+    touchOnToken.current = true;
     setDraggingId(token.id);
     const touch = e.touches[0];
     const rect = containerRef.current!.getBoundingClientRect();
-        dragOffset.current = {
+    dragOffset.current = {
         x: (CELL * scale) / 2,
         y: (CELL * scale) / 2,
-        };
-  };
+    };
+    };
 
-  const onTouchMove = (e: React.TouchEvent) => {
+    const onTouchMove = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
-      // Pinch zoom
-      const d = Math.hypot(
+        const d = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
         e.touches[0].clientY - e.touches[1].clientY
-      );
-      if (pinchDist.current !== null) {
+        );
+        if (pinchDist.current !== null) {
         const delta = d - pinchDist.current;
         setScale(s => Math.max(0.3, Math.min(3, s + delta * 0.005)));
-      }
-      pinchDist.current = d;
-      return;
+        }
+        pinchDist.current = d;
+        return;
     }
     pinchDist.current = null;
     const touch = e.touches[0];
     if (draggingId) {
-      const rect = containerRef.current!.getBoundingClientRect();
-      const rawX = touch.clientX - rect.left - dragOffset.current.x - pan.x;
-      const rawY = touch.clientY - rect.top - dragOffset.current.y - pan.y;
-      const cx = Math.max(0, Math.min(cols - 1, Math.floor(rawX / (CELL * scale))));
-      const cy = Math.max(0, Math.min(rows - 1, Math.floor(rawY / (CELL * scale))));
-      setTokens(prev => prev.map(t => t.id === draggingId ? { ...t, x: cx, y: cy } : t));
-    } else {
-      setPan(p => ({
+        const rect = containerRef.current!.getBoundingClientRect();
+        const rawX = touch.clientX - rect.left - dragOffset.current.x - pan.x;
+        const rawY = touch.clientY - rect.top - dragOffset.current.y - pan.y;
+        const cx = Math.max(0, Math.min(cols - 1, Math.floor(rawX / (CELL * scale))));
+        const cy = Math.max(0, Math.min(rows - 1, Math.floor(rawY / (CELL * scale))));
+        setTokens(prev => prev.map(t => t.id === draggingId ? { ...t, x: cx, y: cy } : t));
+    } else if (!touchOnToken.current) {
+        // Only pan if touch didn't start on a token
+        setPan(p => ({
         x: p.x + touch.clientX - panStart.current.x,
         y: p.y + touch.clientY - panStart.current.y,
-      }));
-      panStart.current = { x: touch.clientX, y: touch.clientY };
+        }));
+        panStart.current = { x: touch.clientX, y: touch.clientY };
     }
-  };
+    };
 
-  const onTouchEnd = async () => {
+    const onTouchEnd = async () => {
     pinchDist.current = null;
+    touchOnToken.current = false;
     if (draggingId) {
-      const token = tokens.find(t => t.id === draggingId);
-      if (token) await supabase.from("map_tokens").update({ x: token.x, y: token.y }).eq("id", token.id);
-      setDraggingId(null);
+        const token = tokens.find(t => t.id === draggingId);
+        if (token) await supabase.from("map_tokens").update({ x: token.x, y: token.y }).eq("id", token.id);
+        setDraggingId(null);
     }
-  };
+    };
 
-  const onTouchStart = (e: React.TouchEvent) => {
+    const onTouchStart = (e: React.TouchEvent) => {
+    touchOnToken.current = false;
     if (e.touches.length === 1) {
-      panStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        panStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     }
-  };
+    };
 
   // Wheel zoom
   const onWheel = (e: React.WheelEvent) => {
