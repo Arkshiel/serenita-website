@@ -63,6 +63,18 @@ export function BattleMap({ sessionId, isDM, userId, characters, entries, onClos
   
 
     useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const prevent = (e: TouchEvent) => e.preventDefault();
+    el.addEventListener("touchmove", prevent, { passive: false });
+    el.addEventListener("touchstart", prevent, { passive: false });
+    return () => {
+        el.removeEventListener("touchmove", prevent);
+        el.removeEventListener("touchstart", prevent);
+    };
+    }, []);
+
+    useEffect(() => {
     supabase.from("battle_sessions").select("map_rows,map_cols,map_walls,map_drawings").eq("id", sessionId).single()
         .then(({ data }) => {
         if (data) {
@@ -246,12 +258,11 @@ const addToken = async (entry: InitiativeEntry) => {
   // Touch drag
     const onTokenTouchStart = (e: React.TouchEvent, token: MapToken) => {
     if (!canMove(token)) return;
+    if (e.touches.length !== 1) return;
     e.stopPropagation();
     e.preventDefault();
     touchOnToken.current = true;
     setDraggingId(token.id);
-    const touch = e.touches[0];
-    const rect = containerRef.current!.getBoundingClientRect();
     dragOffset.current = {
         x: (CELL * scale) / 2,
         y: (CELL * scale) / 2,
@@ -260,20 +271,34 @@ const addToken = async (entry: InitiativeEntry) => {
 
     const onTouchMove = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
+        // Pinch zoom + two-finger pan
         const d = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
         e.touches[0].clientY - e.touches[1].clientY
         );
         if (pinchDist.current !== null) {
         const delta = d - pinchDist.current;
-        setScale(s => Math.max(0.3, Math.min(3, s + delta * 0.005)));
+        setScale(s => Math.max(0.3, Math.min(3, s + delta * 0.01)));
         }
         pinchDist.current = d;
+
+        // Two finger pan
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        setPan(p => ({
+        x: p.x + midX - panStart.current.x,
+        y: p.y + midY - panStart.current.y,
+        }));
+        panStart.current = { x: midX, y: midY };
         return;
     }
+
+    // One finger
     pinchDist.current = null;
     const touch = e.touches[0];
-    if (draggingId) {
+
+    if (draggingId && touchOnToken.current) {
+        // Move token
         const rect = containerRef.current!.getBoundingClientRect();
         const rawX = touch.clientX - rect.left - dragOffset.current.x - pan.x;
         const rawY = touch.clientY - rect.top - dragOffset.current.y - pan.y;
@@ -281,7 +306,7 @@ const addToken = async (entry: InitiativeEntry) => {
         const cy = Math.max(0, Math.min(rows - 1, Math.floor(rawY / (CELL * scale))));
         setTokens(prev => prev.map(t => t.id === draggingId ? { ...t, x: cx, y: cy } : t));
     } else if (!touchOnToken.current) {
-        // Only pan if touch didn't start on a token
+        // Pan map
         setPan(p => ({
         x: p.x + touch.clientX - panStart.current.x,
         y: p.y + touch.clientY - panStart.current.y,
@@ -292,19 +317,35 @@ const addToken = async (entry: InitiativeEntry) => {
 
     const onTouchEnd = async () => {
     pinchDist.current = null;
-    touchOnToken.current = false;
     if (draggingId) {
         const token = tokens.find(t => t.id === draggingId);
         if (token) await supabase.from("map_tokens").update({ x: token.x, y: token.y }).eq("id", token.id);
         setDraggingId(null);
     }
+    touchOnToken.current = false;
     };
 
     const onTouchStart = (e: React.TouchEvent) => {
-    touchOnToken.current = false;
-    if (e.touches.length === 1) {
-        panStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    if (e.touches.length === 2) {
+        // Two fingers — record pinch distance and stop any token drag
+        setDraggingId(null);
+        touchOnToken.current = false;
+        const d = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+        );
+        pinchDist.current = d;
+        panStart.current = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+        };
+        lastPan.current = { ...pan };
+        return;
     }
+    // One finger — record pan start
+    touchOnToken.current = false;
+    panStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    lastPan.current = { ...pan };
     };
 
   // Wheel zoom
