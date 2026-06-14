@@ -4,6 +4,8 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "./auth-provider";
 import { Swords, Plus, ChevronRight, SkipForward, Shield, Heart, Skull, Sparkles, X } from "lucide-react";
 import { SwordClash } from "./sword-clash";
+import { BattleMap } from "./battle-map";
+import { Map } from "lucide-react";
 
 interface Character {
   id: string;
@@ -63,7 +65,7 @@ export function TeamStatus() {
   const [showClash, setShowClash] = useState(false);
   const [dmCharacter, setDmCharacter] = useState<Character | null>(null);
   const [spellSheetChar, setSpellSheetChar] = useState<Character | null>(null);
-
+  const [showMap, setShowMap] = useState(false);
 
   
   // Check if DM
@@ -140,7 +142,8 @@ export function TeamStatus() {
         .from("initiative_rolls")
         .select("*, character:characters(*)")
         .eq("session_id", sessionId)
-        .order("initiative", { ascending: false });
+        .order("initiative", { ascending: false })
+        .order("id", { ascending: true });
     if (data) {
         setEntries(data);
         setMyCharacter(prev => {
@@ -344,7 +347,19 @@ export function TeamStatus() {
           </div>
         </div>
         {isDM && (
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{
+          position: "fixed",
+          bottom: 24,
+          right: 24,
+          display: "flex",
+          gap: 8,
+          zIndex: 40,
+          background: "rgba(10,8,5,0.85)",
+          backdropFilter: "blur(8px)",
+          border: "1px solid rgba(196,169,107,0.15)",
+          borderRadius: 12,
+          padding: "8px 12px",
+        }}>
             {!session?.active && (
             <button onClick={startBattle} style={dmBtnStyle("#c4a96b")}>
                 <Swords size={13} /> Start Battle
@@ -361,7 +376,25 @@ export function TeamStatus() {
             <button onClick={newSession} style={dmBtnStyle("#6b7280")}>
             New Session
             </button>
+            <button onClick={() => setShowMap(true)} style={dmBtnStyle("#38bdf8")}>
+              <Map size={13} /> Map
+            </button>
         </div>
+        )}
+
+        {!isDM && (
+          <button onClick={() => setShowMap(true)} style={{
+            position: "fixed", bottom: 24, right: 24, zIndex: 40,
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "8px 14px",
+            background: "rgba(10,8,5,0.85)",
+            backdropFilter: "blur(8px)",
+            border: "1px solid rgba(56,189,248,0.3)",
+            borderRadius: 12,
+            color: "#38bdf8", fontFamily: "serif", fontSize: 12, cursor: "pointer",
+          }}>
+            <Map size={13} /> Map
+          </button>
         )}
       </div>
 
@@ -812,6 +845,18 @@ export function TeamStatus() {
           </>
         )}
       </AnimatePresence>
+
+      {/* Battle Map */}
+      {showMap && session && (
+        <BattleMap
+          sessionId={session.id}
+          isDM={isDM}
+          userId={user?.id ?? ""}
+          characters={characters}
+          entries={entries}
+          onClose={() => setShowMap(false)}
+        />
+      )}
     </div>
   );
 }
