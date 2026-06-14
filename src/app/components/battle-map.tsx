@@ -212,12 +212,11 @@ const addToken = async (entry: InitiativeEntry) => {
         await supabase.from("battle_sessions").update({ map_drawings: newDrawings }).eq("id", sessionId);
         return;
     }
-    setIsDrawing(false);
-    setCurrentStroke([]);
-    if (draggingId) {
-        const token = tokens.find(t => t.id === draggingId);
-        if (token) await supabase.from("map_tokens").update({ x: token.x, y: token.y }).eq("id", token.id);
-        setDraggingId(null);
+    if (paintMode === "eraseDrawing" && drawings.length > 0) {
+        const newDrawings = drawings.slice(0, -1);
+        setDrawings(newDrawings);
+        await supabase.from("battle_sessions").update({ map_drawings: newDrawings }).eq("id", sessionId);
+        return;
     }
     isPanning.current = false;
     };
@@ -228,7 +227,7 @@ const addToken = async (entry: InitiativeEntry) => {
     };
 
     const paintCell = async (e: React.MouseEvent) => {
-    if (paintMode === "none") return;
+    if (paintMode === "none" || paintMode === "pen" || paintMode === "eraseDrawing") return;
     const rect = containerRef.current!.getBoundingClientRect();
     const cx = Math.max(0, Math.min(cols - 1, Math.floor((e.clientX - rect.left - pan.x) / (CELL * scale))));
     const cy = Math.max(0, Math.min(rows - 1, Math.floor((e.clientY - rect.top - pan.y) / (CELL * scale))));
